@@ -62,9 +62,9 @@ export default function OverviewTab() {
       const response = await clientDataService.getSubmissions(
         searchValue,
         currentPage,
-        itemsPerPage
+        itemsPerPage,
       );
-      
+
       // Add safety checks to prevent "Cannot read properties of undefined" error
       if (!response) {
         console.error("API response is undefined");
@@ -76,14 +76,20 @@ export default function OverviewTab() {
       }
 
       const evaluationsData = response.data || [];
-      
+
       // Debug: Log evaluations with "Others" to check if they're in the response
-      const othersEvaluations = evaluationsData.filter((review: any) => 
-        review.reviewTypeOthersImprovement || 
-        (review.reviewTypeOthersCustom && review.reviewTypeOthersCustom.trim() !== "")
+      const othersEvaluations = evaluationsData.filter(
+        (review: any) =>
+          review.reviewTypeOthersImprovement ||
+          (review.reviewTypeOthersCustom &&
+            review.reviewTypeOthersCustom.trim() !== ""),
       );
       if (othersEvaluations.length > 0) {
-        console.log("Found Others evaluations in overview:", othersEvaluations.length, othersEvaluations);
+        console.log(
+          "Found Others evaluations in overview:",
+          othersEvaluations.length,
+          othersEvaluations,
+        );
       }
 
       setEvaluations(evaluationsData);
@@ -251,7 +257,9 @@ export default function OverviewTab() {
             <div className="text-3xl font-bold text-blue-600">
               {dashboardTotals?.total_users || 0}
             </div>
-            <p className="text-sm text-gray-500 mt-1">All registered employees</p>
+            <p className="text-sm text-gray-500 mt-1">
+              All registered employees
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -562,41 +570,56 @@ export default function OverviewTab() {
                           <TableCell className="px-6 py-3">
                             {(() => {
                               // Check if "Others" is selected - check for improvement (can be 0 or 1) or custom value
-                              const isOthersSelected = 
-                                (review.reviewTypeOthersImprovement != null && review.reviewTypeOthersImprovement !== 0) || 
-                                (review.reviewTypeOthersCustom && 
-                                 review.reviewTypeOthersCustom.trim() !== "");
-                              
+                              const isOthersSelected =
+                                (review.reviewTypeOthersImprovement != null &&
+                                  review.reviewTypeOthersImprovement !== 0) ||
+                                (review.reviewTypeOthersCustom &&
+                                  review.reviewTypeOthersCustom.trim() !== "");
+
                               // Check if regular or probationary types are empty/null
-                              const hasRegular = review.reviewTypeRegular != null && 
-                                review.reviewTypeRegular !== "" && 
+                              const hasRegular =
+                                review.reviewTypeRegular != null &&
+                                review.reviewTypeRegular !== "" &&
                                 review.reviewTypeRegular !== "null" &&
-                                String(review.reviewTypeRegular).trim() !== "" &&
+                                String(review.reviewTypeRegular).trim() !==
+                                  "" &&
                                 review.reviewTypeRegular !== 0;
-                              
-                              const hasProbationary = review.reviewTypeProbationary != null && 
+
+                              const hasProbationary =
+                                review.reviewTypeProbationary != null &&
                                 review.reviewTypeProbationary !== "" &&
                                 review.reviewTypeProbationary !== "null" &&
-                                String(review.reviewTypeProbationary).trim() !== "";
-                              
+                                String(review.reviewTypeProbationary).trim() !==
+                                  "";
+
                               // Determine the display value
                               let displayValue: string = "Others";
-                              
+
                               if (hasRegular) {
-                                displayValue = String(review.reviewTypeRegular).trim();
+                                displayValue = String(
+                                  review.reviewTypeRegular,
+                                ).trim();
                               } else if (hasProbationary) {
-                                displayValue = "M" + String(review.reviewTypeProbationary).trim();
+                                displayValue =
+                                  "M" +
+                                  String(review.reviewTypeProbationary).trim();
                               } else if (isOthersSelected) {
                                 // If custom value exists, use it; otherwise use "Others"
-                                if (review.reviewTypeOthersCustom && review.reviewTypeOthersCustom.trim() !== "") {
-                                  displayValue = review.reviewTypeOthersCustom.trim();
+                                if (
+                                  review.reviewTypeOthersCustom &&
+                                  review.reviewTypeOthersCustom.trim() !== ""
+                                ) {
+                                  displayValue =
+                                    review.reviewTypeOthersCustom.trim();
                                 } else {
                                   displayValue = "Others";
                                 }
                               }
-                              
+
                               return (
-                                <Badge className={getQuarterColor(displayValue)}>
+                                <Badge
+                                  className={getQuarterColor(displayValue)}
+                                >
                                   {displayValue}
                                 </Badge>
                               );
@@ -611,7 +634,7 @@ export default function OverviewTab() {
                                 day: "numeric",
                                 hour: "2-digit",
                                 minute: "2-digit",
-                              }
+                              },
                             )}
                           </TableCell>
                           <TableCell className="px-6 py-3">
@@ -620,15 +643,15 @@ export default function OverviewTab() {
                                 review.status === "completed"
                                   ? "bg-green-100 text-green-800"
                                   : review.status === "pending"
-                                  ? "bg-yellow-100 text-yellow-800"
-                                  : "bg-yellow-100 text-yellow-800"
+                                    ? "bg-yellow-100 text-yellow-800"
+                                    : "bg-yellow-100 text-yellow-800"
                               }
                             >
                               {review.status === "completed"
                                 ? `✓ ${review.status}`
                                 : review.status === "pending"
-                                ? `⏳ ${review.status}`
-                                : review.status}
+                                  ? `⏳ ${review.status}`
+                                  : review.status}
                             </Badge>
                           </TableCell>
                           <TableCell className="px-6 py-3">
