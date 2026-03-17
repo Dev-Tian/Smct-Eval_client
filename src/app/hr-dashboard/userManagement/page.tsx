@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -37,7 +38,8 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Eye, FileText, Pencil, Plus, Trash2 } from "lucide-react";
+import { Eye, FileText, Pencil, Plus, Trash2, BarChart2, X, Download } from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import EditUserModal from "@/components/EditUserModal";
 import AddEmployeeModal from "@/components/AddEmployeeModal";
 import { toastMessages } from "@/lib/toastMessages";
@@ -182,6 +184,15 @@ export default function UserManagementTab() {
     return branch.branch_name || "N/A";
   };
 
+  const getEmployeeBranchDisplay = (emp: User | null): string => {
+    if (!emp?.branches) return "N/A";
+    const b = Array.isArray(emp.branches) ? emp.branches[0] : (emp.branches as any);
+    if (!b) return "N/A";
+    const name = b.branch_name || b.name || "";
+    const code = b.branch_code || b.code || getBranchCode(b);
+    return code ? `${name || code} (${code})` : name || "N/A";
+  };
+
   // Modal states
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -226,6 +237,16 @@ export default function UserManagementTab() {
   //data to view
   const [employeeToView, setEmployeeToView] = useState<User | null>(null);
   const [isViewEmployeeModalOpen, setIsViewEmployeeModalOpen] = useState(false);
+  const [employeeForAverage, setEmployeeForAverage] = useState<User | null>(null);
+  const [isAverageModalOpen, setIsAverageModalOpen] = useState(false);
+  const [showNoDataAlert, setShowNoDataAlert] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [showExportError, setShowExportError] = useState(false);
+  const [recordedYearsForAverage, setRecordedYearsForAverage] = useState<{ year: number }[]>([]);
+  const [loadingRecordedYears, setLoadingRecordedYears] = useState(false);
+  const [averageModalYear, setAverageModalYear] = useState<string>("");
+  const [averageTableData, setAverageTableData] = useState<{ rows: { quarter: string; rating: number }[]; average: number } | null>(null);
+  const [loadingAverageTable, setLoadingAverageTable] = useState(false);
   const [selectedEmployeeForEvaluation, setSelectedEmployeeForEvaluation] =
     useState<User | null>(null);
   const [isDeletingEmployee, setIsDeletingEmployee] = useState(false);
@@ -431,6 +452,80 @@ export default function UserManagementTab() {
     setEmployeeToDelete(employee);
     setIsDeleteModalOpen(true);
   };
+
+  const loadAverageTableForYear = async (year?: string) => {
+    const targetYear = year || averageModalYear;
+    if (!employeeForAverage?.id || !targetYear) return;
+    setLoadingAverageTable(true);
+    setAverageTableData(null);
+    try {
+      const employeeName = `${employeeForAverage.fname || ""} ${employeeForAverage.lname || ""}`.trim();
+      const response = await apiService.getSubmissions(
+        employeeName,
+        1,
+        100,
+        "",
+        "",
+        targetYear,
+        "",
+        ""
+      );
+      const list: any[] = response?.data || [];
+      const employeeId = Number(employeeForAverage.id);
+      const forEmployee = list.filter((ev: any) => {
+        const evEmpId = ev.employee?.id != null ? Number(ev.employee.id) : null;
+        return evEmpId === employeeId || (ev.employee?.fname && ev.employee?.lname && `${ev.employee.fname} ${ev.employee.lname}`.trim() === employeeName);
+      });
+      const getQuarter = (ev: any): string => {
+        if (ev.reviewTypeOthersImprovement || (ev.reviewTypeOthersCustom && String(ev.reviewTypeOthersCustom).trim())) return "Others";
+        if (ev.reviewTypeProbationary != null && ev.reviewTypeProbationary !== "" && ev.reviewTypeProbationary !== "null") return `M${ev.reviewTypeProbationary}`;
+        if (ev.reviewTypeRegular) return String(ev.reviewTypeRegular);
+        const d = new Date(ev.created_at || ev.submittedAt);
+        const m = d.getMonth() + 1;
+        return `Q${Math.ceil(m / 3)}`;
+      };
+      const rows = forEmployee.map((ev: any) => ({
+        quarter: getQuarter(ev),
+        rating: Number(ev.rating) || 0,
+      }));
+      const sum = rows.reduce((acc: number, r: { quarter: string; rating: number }) => acc + r.rating, 0);
+      const average = rows.length > 0 ? sum / rows.length : 0;
+      setAverageTableData({ rows, average });
+    } catch {
+      setAverageTableData({ rows: [], average: 0 });
+    } finally {
+      setLoadingAverageTable(false);
+    }
+  };
+
+  // Load recorded years when Average modal opens (years that have evaluation data)
+  useEffect(() => {
+    if (!isAverageModalOpen) {
+      setRecordedYearsForAverage([]);
+      setAverageModalYear("");
+      setAverageTableData(null);
+      return;
+    }
+    let cancelled = false;
+    setLoadingRecordedYears(true);
+    apiService
+      .getAllYears()
+      .then((years: { year: number }[]) => {
+        if (cancelled || !Array.isArray(years)) return;
+        const sorted = [...years].sort((a, b) => b.year - a.year);
+        setRecordedYearsForAverage(sorted);
+        setAverageModalYear("");
+      })
+      .catch(() => {
+        if (!cancelled) setRecordedYearsForAverage([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingRecordedYears(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isAverageModalOpen]);
 
   const handleSaveUser = async (updatedUser: any) => {
     try {
@@ -1161,6 +1256,19 @@ export default function UserManagementTab() {
                                     <Button
                                       variant="ghost"
                                       size="sm"
+                                      className="text-blue-600 hover:text-blue-700 hover:bg-blue-200 cursor-pointer hover:scale-110 transition-transform duration-200"
+                                      onClick={() => {
+                                        setEmployeeForAverage(employee);
+                                        setIsAverageModalOpen(true);
+                                      }}
+                                      disabled={deletingUserId !== null}
+                                      title="View employee average"
+                                    >
+                                      <BarChart2 className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
                                       className="text-blue-600 hover:text-blue-700 hover:bg-blue-200 cursor-pointer hover:scale-120 transition-transform duration-200"
                                       onClick={() => openEditModal(employee)}
                                       disabled={deletingUserId !== null}
@@ -1730,6 +1838,376 @@ export default function UserManagementTab() {
               </Button>
             </div>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Employee Average Modal */}
+      <Dialog
+        open={isAverageModalOpen}
+        onOpenChangeAction={(open) => {
+          if (!open) {
+            setIsAverageModalOpen(false);
+            setEmployeeForAverage(null);
+          }
+        }}
+      >
+        <DialogContent className={`p-0 ${dialogAnimationClass} ${averageTableData ? "max-w-2xl" : "max-w-md"} relative overflow-hidden`}>
+          {/* Header Section */}
+          <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-5 text-white">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                setIsAverageModalOpen(false);
+                setEmployeeForAverage(null);
+              }}
+              className="absolute top-3 right-3 cursor-pointer hover:bg-white/20 text-white h-8 w-8 rounded-full"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+            <div className="flex items-center gap-3">
+              <div className="bg-white/20 p-2 rounded-lg">
+                <BarChart2 className="h-6 w-6" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold">Employee Average</h2>
+                <p className="text-blue-100 text-sm">
+                  {employeeForAverage
+                    ? `${employeeForAverage.fname || ""} ${employeeForAverage.lname || ""}`.trim()
+                    : "Select a year to view averages"}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Content Section */}
+          <div className="p-6 space-y-4">
+            {/* Year Selector */}
+            <div className="flex items-center gap-4">
+              <Label htmlFor="average-year" className="text-sm font-medium text-gray-700 whitespace-nowrap">
+                Select Year:
+              </Label>
+              {loadingRecordedYears ? (
+                <div className="flex items-center gap-2 text-sm text-gray-500">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading...
+                </div>
+              ) : recordedYearsForAverage.length === 0 ? (
+                <p className="text-sm text-gray-500">No recorded years available.</p>
+              ) : (
+                <Select
+                  value={averageModalYear}
+                  onValueChange={(val) => {
+                    setAverageModalYear(val);
+                    loadAverageTableForYear(val);
+                  }}
+                >
+                  <SelectTrigger id="average-year" className="w-32 cursor-pointer border-gray-300 focus:ring-blue-500">
+                    <SelectValue placeholder="Select year" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {recordedYearsForAverage.map((y) => (
+                      <SelectItem key={y.year} value={String(y.year)}>
+                        {y.year}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+
+            {/* Empty State */}
+            {!averageModalYear && !loadingAverageTable && !averageTableData && (
+              <div className="text-center py-10 text-gray-400 border-2 border-dashed border-gray-200 rounded-lg">
+                <BarChart2 className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                <p className="text-sm font-medium">Select a year to view averages</p>
+                <p className="text-xs mt-1">Choose from the dropdown above</p>
+              </div>
+            )}
+
+            {loadingAverageTable && (
+              <div className="flex flex-col items-center justify-center gap-3 py-10 text-gray-500">
+                <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+                <p className="text-sm font-medium">Loading evaluations...</p>
+              </div>
+            )}
+
+            {averageTableData && !loadingAverageTable && (
+              <div className="mt-4 space-y-3">
+                {/* Export Button */}
+                <div className="flex justify-end">
+                  <Button
+                    onClick={async () => {
+                      if (!averageTableData || !employeeForAverage) return;
+                      if (averageTableData.rows.length === 0) {
+                        setShowNoDataAlert(true);
+                        return;
+                      }
+                      setIsExporting(true);
+                      try {
+                        await new Promise((resolve) => setTimeout(resolve, 1000));
+                        const employeeName = `${employeeForAverage.fname || ""} ${employeeForAverage.lname || ""}`.trim();
+                        const branch = getEmployeeBranchDisplay(employeeForAverage);
+                        const csvRows = [
+                          ["Name", "Branch", "Quarters", "Rating"],
+                          ...averageTableData.rows.map((row) => [
+                            employeeName,
+                            branch,
+                            row.quarter,
+                            row.rating > 0 ? row.rating.toString() : "—",
+                          ]),
+                          ["", "", "Average", averageTableData.average.toFixed(2)],
+                        ];
+                        const csvContent = csvRows.map((row) => row.join(",")).join("\n");
+                        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+                        const url = URL.createObjectURL(blob);
+                        const link = document.createElement("a");
+                        link.href = url;
+                        link.download = `${employeeName.replace(/\s+/g, "_")}_Average_${averageModalYear}.csv`;
+                        link.click();
+                        URL.revokeObjectURL(url);
+                      } catch {
+                        setShowExportError(true);
+                      } finally {
+                        setIsExporting(false);
+                      }
+                    }}
+                    disabled={isExporting}
+                    className="cursor-pointer bg-green-600 hover:bg-green-700 text-white rounded-lg shadow-sm transition-all hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Export CSV
+                  </Button>
+                </div>
+
+                {/* Table */}
+                <div className="border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-gradient-to-r from-blue-50 to-blue-100">
+                        <TableHead className="font-semibold text-blue-800">Name</TableHead>
+                        <TableHead className="font-semibold text-blue-800">Branch</TableHead>
+                        <TableHead className="font-semibold text-blue-800">Quarter</TableHead>
+                        <TableHead className="font-semibold text-blue-800">Rating</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {averageTableData.rows.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={4} className="text-center text-gray-500 py-8">
+                            <p className="font-medium">No evaluations recorded</p>
+                            <p className="text-xs mt-1">No data available for {averageModalYear}</p>
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        <>
+                          {averageTableData.rows.map((row, idx) => (
+                            <TableRow key={idx} className="hover:bg-gray-50 transition-colors">
+                              <TableCell className="font-medium text-gray-800">
+                                {employeeForAverage
+                                  ? `${employeeForAverage.fname || ""} ${employeeForAverage.lname || ""}`.trim()
+                                  : "—"}
+                              </TableCell>
+                              <TableCell className="text-gray-600">{employeeForAverage ? getEmployeeBranchDisplay(employeeForAverage) : "—"}</TableCell>
+                              <TableCell>
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                  {row.quarter}
+                                </span>
+                              </TableCell>
+                              <TableCell>
+                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                  row.rating >= 4 ? "bg-green-100 text-green-800" :
+                                  row.rating >= 3 ? "bg-blue-100 text-blue-800" :
+                                  row.rating >= 2.5 ? "bg-amber-100 text-amber-800" : "bg-red-100 text-red-800"
+                                }`}>
+                                  {row.rating > 0 ? row.rating.toFixed(2) : "—"}
+                                </span>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                          <TableRow className="bg-gradient-to-r from-blue-600 to-blue-700 text-white font-semibold">
+                            <TableCell colSpan={3} className="text-right">Overall Average</TableCell>
+                            <TableCell>
+                              <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-bold bg-white/20">
+                                {averageTableData.average.toFixed(2)}
+                              </span>
+                            </TableCell>
+                          </TableRow>
+                        </>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                {/* Rating Chart - Below Table */}
+                {averageTableData.rows.length > 0 && (
+                  <div className="border rounded-lg p-4 bg-white">
+                    <h4 className="text-sm font-semibold mb-2 text-gray-700">Rating by Quarter</h4>
+                    <ResponsiveContainer width="100%" height={160}>
+                      <BarChart
+                        data={averageTableData.rows.map((row) => ({
+                          quarter: row.quarter,
+                          rating: row.rating,
+                        }))}
+                        margin={{ left: 0, right: 10, top: 10, bottom: 5 }}
+                        barCategoryGap="20%"
+                      >
+                        <CartesianGrid
+                          strokeDasharray="3 3"
+                          stroke="#e5e7eb"
+                          vertical={false}
+                        />
+                        <XAxis
+                          dataKey="quarter"
+                          tickLine={false}
+                          axisLine={false}
+                          tick={{ fontSize: 11, fill: "#6b7280" }}
+                          interval={0}
+                        />
+                        <YAxis
+                          domain={[0, 5]}
+                          tickLine={false}
+                          axisLine={false}
+                          tick={{ fontSize: 11, fill: "#6b7280" }}
+                          ticks={[0, 1, 2, 3, 4, 5]}
+                          width={20}
+                        />
+                        <Tooltip
+                          formatter={(value: number) => [`${value.toFixed(2)}`, "Rating"]}
+                          contentStyle={{
+                            borderRadius: "8px",
+                            border: "1px solid #e5e7eb",
+                            boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+                          }}
+                          cursor={{ fill: "rgba(59, 130, 246, 0.1)" }}
+                        />
+                        <Bar dataKey="rating" radius={[4, 4, 0, 0]} maxBarSize={40}>
+                          {averageTableData.rows.map((row, index) => (
+                            <Cell
+                              key={`cell-${index}`}
+                              fill={
+                                row.rating >= 4 ? "#22c55e" :
+                                row.rating >= 3 ? "#3b82f6" :
+                                row.rating >= 2.5 ? "#f59e0b" : "#ef4444"
+                              }
+                            />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                    <div className="mt-2 px-3 py-2 bg-gray-50 rounded-md border">
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-4 flex-wrap">
+                          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-green-500"></span><span className="text-xs text-gray-600">≥4</span></span>
+                          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-blue-500"></span><span className="text-xs text-gray-600">3-3.9</span></span>
+                          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-amber-500"></span><span className="text-xs text-gray-600">2.5-2.9</span></span>
+                          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-red-500"></span><span className="text-xs text-gray-600">&lt;2.5</span></span>
+                        </div>
+                        <div className="text-xs text-gray-600 bg-white px-2 py-0.5 rounded border">
+                          <span className="font-semibold">{averageTableData.rows.length}</span> eval{averageTableData.rows.length !== 1 ? "s" : ""}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* No Data Alert Dialog */}
+      <Dialog
+        open={showNoDataAlert}
+        onOpenChangeAction={(open) => {
+          if (!open) setShowNoDataAlert(false);
+        }}
+      >
+        <DialogContent className="max-w-md p-8 text-center">
+          <div className="flex flex-col items-center">
+            {/* GIF */}
+            <div className="mb-4">
+              <img
+                src="/no-data.gif"
+                alt="No data"
+                className="w-40 h-40 object-contain"
+              />
+            </div>
+            
+            {/* Title */}
+            <h2 className="text-xl font-bold text-red-600 mb-2">
+              No Data to Export
+            </h2>
+            
+            {/* Description */}
+            <p className="text-gray-600 text-sm mb-6 max-w-xs">
+              There are no evaluations recorded for the selected year. Please select a different year with available data.
+            </p>
+            
+            {/* Button */}
+            <Button
+              onClick={() => setShowNoDataAlert(false)}
+              className="px-8 py-2 cursor-pointer bg-blue-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors"
+            >
+              Got it
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Exporting Dialog */}
+      <Dialog open={isExporting} onOpenChangeAction={() => {}}>
+        <DialogContent className="max-w-xs p-8 text-center">
+          <div className="flex flex-col items-center">
+            <div className="mb-4">
+              <img
+                src="/smct.png"
+                alt="SMCT Logo"
+                className="w-24 h-auto object-contain"
+              />
+            </div>
+            <div className="mb-4">
+              <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+            </div>
+            <h2 className="text-lg font-semibold text-gray-800 mb-2">
+              Exporting Data
+            </h2>
+            <p className="text-gray-500 text-sm">
+              Please wait while we prepare your file...
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Export Error Dialog */}
+      <Dialog
+        open={showExportError}
+        onOpenChangeAction={(open) => {
+          if (!open) setShowExportError(false);
+        }}
+      >
+        <DialogContent className="max-w-sm p-8 text-center">
+          <div className="flex flex-col items-center">
+            <div className="mb-4">
+              <img
+                src="/no-data2.gif"
+                alt="Error"
+                className="w-32 h-32 object-contain"
+              />
+            </div>
+            <h2 className="text-xl font-bold text-red-600 mb-2">
+              Something Went Wrong
+            </h2>
+            <p className="text-gray-600 text-sm mb-6 max-w-xs">
+              We encountered an error while exporting your data. Please try again later.
+            </p>
+            <Button
+              onClick={() => setShowExportError(false)}
+              className="px-8 py-2 cursor-pointer bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors"
+            >
+              Close
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 
