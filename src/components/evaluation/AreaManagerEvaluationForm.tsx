@@ -18,7 +18,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { AlertTriangle } from "lucide-react";
-import WelcomeStepBranch from "./WelcomeStepBranch";
+import WelcomeStepAreaManager from "./WelcomeStepAreaManager";
 import { EvaluationPayload } from "./types";
 import { storeEvaluationResult } from "@/lib/evaluationStorage";
 import { apiService } from "@/lib/apiService";
@@ -460,7 +460,45 @@ export default function AreaManagerEvaluationForm({
         const evaluatorId = typeof user?.id === 'string' ? parseInt(user.id, 10) : (user?.id || 0);
         
         // Use BranchBasicAreaManager endpoint for Area Manager evaluations
-        await apiService.postBranchBasicAreaManager(employeeId, form);
+        const managerial_skills = ([
+          {
+            question_number: 1 as const,
+            score: Number(form.managerialSkillsScore1 || 0),
+            explanation: form.managerialSkillsExplanation1 || "",
+          },
+          {
+            question_number: 2 as const,
+            score: Number(form.managerialSkillsScore2 || 0),
+            explanation: form.managerialSkillsExplanation2 || "",
+          },
+          {
+            question_number: 3 as const,
+            score: Number(form.managerialSkillsScore3 || 0),
+            explanation: form.managerialSkillsExplanation3 || "",
+          },
+          {
+            question_number: 4 as const,
+            score: Number(form.managerialSkillsScore4 || 0),
+            explanation: form.managerialSkillsExplanation4 || "",
+          },
+          {
+            question_number: 5 as const,
+            score: Number(form.managerialSkillsScore5 || 0),
+            explanation: form.managerialSkillsExplanation5 || "",
+          },
+          {
+            question_number: 6 as const,
+            score: Number(form.managerialSkillsScore6 || 0),
+            explanation: form.managerialSkillsExplanation6 || "",
+          },
+        ].filter((x) => x.score > 0) as EvaluationPayload["managerial_skills"]);
+
+        const submissionPayload: EvaluationPayload = {
+          ...form,
+          managerial_skills,
+        };
+
+        await apiService.postBranchBasicAreaManager(employeeId, submissionPayload);
         
         // Store in localStorage as backup
         if (employee) {
@@ -579,13 +617,12 @@ export default function AreaManagerEvaluationForm({
               )}
               <CardContent>
                 {currentStep === 0 ? (
-                  <WelcomeStepBranch
+                  <WelcomeStepAreaManager
                     data={form}
                     updateDataAction={updateDataAction}
                     employee={employee}
                     onStartAction={startEvaluation}
                     onBackAction={onCloseAction}
-                    evaluationType="basic"
                   />
                 ) : (() => {
                   const stepIndex = currentStep - 1;
@@ -612,7 +649,7 @@ export default function AreaManagerEvaluationForm({
                     employee: employee,
                   };
                   if (step.id === 1 || step.id === 2) {
-                    stepProps.evaluationType = "basic";
+                    stepProps.evaluationType = "areaManager";
                   }
                   if (step.id === 2) {
                     stepProps.forceShowJobTargets = true;
