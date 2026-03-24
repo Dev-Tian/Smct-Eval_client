@@ -639,7 +639,7 @@ const AddEmployeeModal: React.FC<AddEmployeeModalProps> = ({
                 placeholder="Select position"
                 searchPlaceholder="Search positions..."
                 emptyText="No positions found."
-                className={errors.position_id ? "border-red-500" : "bg-white"}
+                className={errors.position_id ? "border-red-500" : "bg-white cursor-pointer hover:scale-105 transition-all duration-300"}
               />
               {errors.position_id && (
                 <p className="text-sm text-red-500">{errors.position_id}</p>
@@ -658,7 +658,7 @@ const AddEmployeeModal: React.FC<AddEmployeeModalProps> = ({
                 placeholder="Select branch"
                 searchPlaceholder="Search branches..."
                 emptyText="No branches found."
-                className={errors.branch_id ? "border-red-500" : ""}
+                className={errors.branch_id ? "border-red-500 cursor-pointer hover:scale-105 transition-all duration-300" : "cursor-pointer hover:scale-105 transition-all duration-300"}
               />
               {errors.branch_id && (
                 <p className="text-sm text-red-500">{errors.branch_id}</p>
@@ -679,7 +679,7 @@ const AddEmployeeModal: React.FC<AddEmployeeModalProps> = ({
                   searchPlaceholder="Search departments..."
                   emptyText="No departments found."
                   className={
-                    errors.department_id ? "border-red-500" : "bg-white"
+                    errors.department_id ? "border-red-500" : "bg-white cursor-pointer hover:scale-105 transition-all duration-300"
                   }
                 />
                 {errors.department_id && (
@@ -694,7 +694,7 @@ const AddEmployeeModal: React.FC<AddEmployeeModalProps> = ({
               <Select
                 onValueChange={(value) => handleInputChange("role_id", value)}
               >
-                <SelectTrigger className="w-48">
+                <SelectTrigger className="w-48 cursor-pointer hover:scale-105 transition-all duration-300">
                   <SelectValue placeholder="Select role" />
                 </SelectTrigger>
                 <SelectContent>
