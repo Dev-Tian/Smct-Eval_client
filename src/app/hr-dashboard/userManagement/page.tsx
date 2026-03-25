@@ -190,17 +190,59 @@ export default function UserManagementTab() {
       }
     }
     
+    // If branch is an ID, find branch in branchesData
+    const branchId = Number(branch);
+    if (!Number.isNaN(branchId) && branchesData.length > 0) {
+      const foundBranch = branchesData.find(
+        (b: any) => Number(b?.value) === branchId
+      );
+      if (foundBranch?.label) {
+        const labelParts = String(foundBranch.label).split(" /");
+        return (labelParts[1] || labelParts[0] || "N/A").trim();
+      }
+    }
+
     // Fallback to branch_name if code not found
     return branch.branch_name || "N/A";
   };
 
+  const getUserBranchCode = (employee: User | null): string => {
+    if (!employee) return "N/A";
+
+    if (employee.branches) {
+      const branchData = Array.isArray(employee.branches)
+        ? employee.branches[0]
+        : employee.branches;
+      const codeFromBranches = getBranchCode(branchData);
+      if (codeFromBranches !== "N/A") return codeFromBranches;
+    }
+
+    const employeeAny = employee as any;
+    const branchIdOrValue = employeeAny.branch_id ?? employeeAny.branch;
+    if (branchIdOrValue !== undefined && branchIdOrValue !== null && branchIdOrValue !== "") {
+      return getBranchCode(branchIdOrValue);
+    }
+
+    return "N/A";
+  };
+
   const getEmployeeBranchDisplay = (emp: User | null): string => {
-    if (!emp?.branches) return "N/A";
-    const b = Array.isArray(emp.branches) ? emp.branches[0] : (emp.branches as any);
-    if (!b) return "N/A";
-    const name = b.branch_name || b.name || "";
-    const code = b.branch_code || b.code || getBranchCode(b);
-    return code ? `${name || code} (${code})` : name || "N/A";
+    if (!emp) return "N/A";
+
+    if (emp.branches) {
+      const b = Array.isArray(emp.branches)
+        ? emp.branches[0]
+        : (emp.branches as any);
+      if (b) {
+        const name = b.branch_name || b.name || "";
+        const code = b.branch_code || b.code || getBranchCode(b);
+        return code ? `${name || code} (${code})` : name || "N/A";
+      }
+    }
+
+    // Fallback for payloads that only include branch_id/branch
+    const code = getUserBranchCode(emp as any);
+    return code !== "N/A" ? code : "N/A";
   };
 
   const isHOBranchSelected = (branchId: string): boolean => {
@@ -271,6 +313,7 @@ export default function UserManagementTab() {
   const [showNoDataAlert, setShowNoDataAlert] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [showExportError, setShowExportError] = useState(false);
+  const [isBulkUploadSuccessModalOpen, setIsBulkUploadSuccessModalOpen] = useState(false);
   const [recordedYearsForAverage, setRecordedYearsForAverage] = useState<{ year: number }[]>([]);
   const [loadingRecordedYears, setLoadingRecordedYears] = useState(false);
   const [averageModalYear, setAverageModalYear] = useState<string>("");
@@ -1576,13 +1619,7 @@ export default function UserManagementTab() {
                                 <TableCell>
                                   {employee.positions?.label || "N/A"}
                                 </TableCell>
-                                <TableCell>
-                                  {employee.branches &&
-                                  Array.isArray(employee.branches) &&
-                                  employee.branches[0]
-                                    ? getBranchCode(employee.branches[0])
-                                    : "N/A"}
-                                </TableCell>
+                                <TableCell>{getUserBranchCode(employee)}</TableCell>
                                 <TableCell>
                                   <Badge
                                     variant="outline"
@@ -2159,11 +2196,7 @@ export default function UserManagementTab() {
                   </p>
                   <p>
                     <span className="font-medium">Branch:</span>{" "}
-                    {employeeToDelete?.branches
-                      ? Array.isArray(employeeToDelete.branches)
-                        ? getBranchCode(employeeToDelete.branches[0])
-                        : getBranchCode(employeeToDelete.branches)
-                      : "N/A"}
+                    {getUserBranchCode(employeeToDelete)}
                   </p>
                 </div>
               </div>
@@ -2927,7 +2960,47 @@ export default function UserManagementTab() {
         branches={branchesData}
         positions={positionsData}
         roles={roles}
+        onBulkUploadSuccess={() => setIsBulkUploadSuccessModalOpen(true)}
       />
+
+      {/* Bulk Upload Success Modal */}
+      <Dialog
+        open={isBulkUploadSuccessModalOpen}
+        onOpenChangeAction={(open) => setIsBulkUploadSuccessModalOpen(open)}
+      >
+        <DialogContent className={`max-w-md p-8 text-center ${dialogAnimationClass}`}>
+          <div className="flex flex-col items-center">
+            <div className="relative mb-4">
+              <span className="absolute inset-0 rounded-full bg-green-200 animate-ping opacity-60" />
+              <div className="relative flex items-center justify-center w-24 h-24 rounded-full bg-green-100 border-4 border-green-500 shadow-md">
+                <span className="text-5xl text-green-600 font-bold leading-none animate-pulse">
+                  ✓
+                </span>
+              </div>
+            </div>
+            <h2 className="text-xl font-bold text-green-700 mb-2">
+              Upload Successful
+            </h2>
+            <p className="text-gray-600 text-sm mb-6 max-w-xs">
+              Bulk user upload completed successfully. The user list has been refreshed.
+            </p>
+            <Button
+              onClick={async () => {
+                setIsBulkUploadSuccessModalOpen(false);
+                setIsAddUserModalOpen(false);
+                setIsDeleteModalOpen(false);
+                setIsEditModalOpen(false);
+                setIsViewEmployeeModalOpen(false);
+                setEmployeeToView(null);
+                await refreshUserData(true);
+              }}
+              className="px-8 py-2 cursor-pointer bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors"
+            >
+              OK
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {employeeToView && (
         <ViewEmployeeModal
