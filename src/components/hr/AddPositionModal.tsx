@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -32,6 +33,8 @@ export default function AddPositionModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isValidationDialogOpen, setIsValidationDialogOpen] = useState(false);
   const [validationDialogMessage, setValidationDialogMessage] = useState("");
+  const [isSuccessDialogOpen, setIsSuccessDialogOpen] = useState(false);
+  const [successLabel, setSuccessLabel] = useState("");
 
   useEffect(() => {
     if (!open) {
@@ -63,10 +66,9 @@ export default function AddPositionModal({
         apiService.addPosition(trimmed),
         new Promise((resolve) => setTimeout(resolve, 3000)),
       ]);
-      toastMessages.generic.success(
-        "Position Added",
-        `"${trimmed}" has been added.`
-      );
+
+      setSuccessLabel(trimmed);
+      setIsSuccessDialogOpen(true);
       await onAdded?.();
       onOpenChangeAction(false);
     } catch (err: unknown) {
@@ -192,6 +194,40 @@ export default function AddPositionModal({
             <Button
               className="bg-blue-600 hover:bg-blue-700 text-white cursor-pointer px-6 hover:scale-110 transition-all duration-200"
               onClick={() => setIsValidationDialogOpen(false)}
+              disabled={isSubmitting}
+            >
+              OK
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Success dialog (shown when add succeeds) */}
+      <Dialog open={isSuccessDialogOpen} onOpenChangeAction={setIsSuccessDialogOpen}>
+        <DialogContent className="max-w-sm w-[90vw] px-6 py-6">
+          <DialogHeader>
+            <div className="flex items-start gap-3">
+              <div className="mt-1 inline-flex h-9 w-9 items-center justify-center rounded-md bg-green-50 text-green-700 border border-green-100">
+                <CheckCircle2 className="h-5 w-5" />
+              </div>
+              <div className="flex-1">
+                <DialogTitle className="text-xl font-bold text-gray-900">
+                  Position Added
+                </DialogTitle>
+                <DialogDescription className="text-gray-700">
+                  <span className="font-semibold text-green-700">
+                    {successLabel}
+                  </span>{" "}
+                  has been added to the HR Positions list.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <DialogFooter className="border-t border-gray-200 pt-4">
+            <Button
+              className="bg-green-600 hover:bg-green-700 text-white cursor-pointer px-6 hover:scale-110 transition-all duration-200"
+              onClick={() => setIsSuccessDialogOpen(false)}
               disabled={isSubmitting}
             >
               OK

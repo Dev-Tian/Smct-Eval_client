@@ -7,14 +7,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 import { toastMessages } from "@/lib/toastMessages";
 import apiService from "@/lib/apiService";
 import AddPositionModal from "@/components/hr/AddPositionModal";
+import DeletePositionModal, { Position } from "@/components/hr/DeletePositionModal";
 import EvaluationsPagination from "@/components/paginationComponent";
-
-type Position = { id: number; label: string };
 
 export default function PositionsTab() {
   const [positions, setPositions] = useState<Position[]>([]);
@@ -78,27 +76,6 @@ export default function PositionsTab() {
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm]);
-
-  const handleDelete = async () => {
-    if (!positionToDelete) return;
-    setIsDeleting(true);
-    try {
-      await apiService.deletePosition(positionToDelete.id);
-      toastMessages.generic.success("Position Deleted", `"${positionToDelete.label}" has been deleted.`);
-      setIsDeleteModalOpen(false);
-      setPositionToDelete(null);
-      await refreshPositions();
-    } catch (error: any) {
-      const backendMsg =
-        error?.response?.data?.message ||
-        error?.response?.data?.error ||
-        error?.message ||
-        "Failed to delete position.";
-      toastMessages.generic.error("Error", backendMsg);
-    } finally {
-      setIsDeleting(false);
-    }
-  };
 
   if (loading) {
     return (
@@ -220,34 +197,19 @@ export default function PositionsTab() {
         onAdded={refreshPositions}
       />
 
-      {/* Delete Position Dialog */}
-      <Dialog open={isDeleteModalOpen} onOpenChangeAction={setIsDeleteModalOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Position</DialogTitle>
-            <DialogDescription>
-              {positionToDelete ? (
-                <>Are you sure you want to delete “{positionToDelete.label}”?</>
-              ) : (
-                <>Are you sure?</>
-              )}
-            </DialogDescription>
-          </DialogHeader>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDeleteModalOpen(false)} disabled={isDeleting}>
-              Cancel
-            </Button>
-            <Button
-              className="bg-red-600 hover:bg-red-700 text-white cursor-pointer"
-              onClick={handleDelete}
-              disabled={isDeleting || !positionToDelete}
-            >
-              {isDeleting ? "Deleting..." : "Delete"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <DeletePositionModal
+        open={isDeleteModalOpen}
+        onOpenChangeAction={(open) => {
+          setIsDeleteModalOpen(open);
+          if (!open) setPositionToDelete(null);
+        }}
+        positionToDelete={positionToDelete}
+        onDeleted={async () => {
+          setPositionToDelete(null);
+          await refreshPositions();
+        }}
+        onDeletingChange={setIsDeleting}
+      />
     </div>
   );
 }
