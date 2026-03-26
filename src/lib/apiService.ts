@@ -133,11 +133,20 @@ export const apiService = {
     }));
   },
 
-  getPositions: async (): Promise<{ label: string; value: string }[]> => {
+  getPositions: async (): Promise<
+    {
+      label: string;
+      value: string;
+      created_at?: string | null;
+      updated_at?: string | null;
+    }[]
+  > => {
     const response = await api.get("/positions");
     return response.data.positions.map((position: any) => ({
       value: position.id,
       label: position.label,
+      created_at: position.created_at ?? null,
+      updated_at: position.updated_at ?? null,
     }));
   },
 
