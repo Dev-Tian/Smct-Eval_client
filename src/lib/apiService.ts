@@ -141,6 +141,20 @@ export const apiService = {
     }));
   },
 
+  // Add new position (HR/management maintenance)
+  addPosition: async (label: string): Promise<any> => {
+    const response = await api.post("/addPosition", {
+      label,
+    });
+    return response.data;
+  },
+
+  // Delete position by id (HR/management maintenance)
+  deletePosition: async (positionId: string | number): Promise<any> => {
+    const response = await api.post(`/deletePosition/${positionId}`);
+    return response.data;
+  },
+
   getBranches: async (): Promise<{ label: string; value: string }[]> => {
     const response = await api.get("/branches");
     return response.data.branches.map((branches: any) => ({
