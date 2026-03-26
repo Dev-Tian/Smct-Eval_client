@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -35,6 +34,7 @@ export default function AddPositionModal({
   const [validationDialogMessage, setValidationDialogMessage] = useState("");
   const [isSuccessDialogOpen, setIsSuccessDialogOpen] = useState(false);
   const [successLabel, setSuccessLabel] = useState("");
+  const [shouldRefreshAfterSuccess, setShouldRefreshAfterSuccess] = useState(false);
 
   useEffect(() => {
     if (!open) {
@@ -42,6 +42,29 @@ export default function AddPositionModal({
       setError("");
     }
   }, [open]);
+
+  useEffect(() => {
+    // When the success dialog closes, refresh the list (so the dialog animation is visible).
+    if (!isSuccessDialogOpen && shouldRefreshAfterSuccess) {
+      setShouldRefreshAfterSuccess(false);
+      void (async () => {
+        try {
+          await onAdded?.();
+        } catch (e) {
+          // Keep UI stable; errors are handled by the caller where possible.
+          console.error("Failed to refresh positions after add:", e);
+        }
+      })();
+    }
+  }, [isSuccessDialogOpen, shouldRefreshAfterSuccess, onAdded]);
+
+  useEffect(() => {
+    if (!isSuccessDialogOpen) return;
+    const id = window.setTimeout(() => {
+      setIsSuccessDialogOpen(false);
+    }, 3000);
+    return () => window.clearTimeout(id);
+  }, [isSuccessDialogOpen]);
 
   const validate = () => {
     if (!label.trim()) {
@@ -68,9 +91,13 @@ export default function AddPositionModal({
       ]);
 
       setSuccessLabel(trimmed);
+      toastMessages.generic.success(
+        "Position Added",
+        `"${trimmed}" has been added.`
+      );
       setIsSuccessDialogOpen(true);
-      await onAdded?.();
       onOpenChangeAction(false);
+      setShouldRefreshAfterSuccess(true);
     } catch (err: unknown) {
       const anyErr = err as { response?: { data?: { message?: string; error?: string } }; message?: string };
       const backendMsg =
@@ -205,33 +232,50 @@ export default function AddPositionModal({
       {/* Success dialog (shown when add succeeds) */}
       <Dialog open={isSuccessDialogOpen} onOpenChangeAction={setIsSuccessDialogOpen}>
         <DialogContent className="max-w-sm w-[90vw] px-6 py-6">
-          <DialogHeader>
-            <div className="flex items-start gap-3">
-              <div className="mt-1 inline-flex h-9 w-9 items-center justify-center rounded-md bg-green-50 text-green-700 border border-green-100">
-                <CheckCircle2 className="h-5 w-5" />
-              </div>
-              <div className="flex-1">
-                <DialogTitle className="text-xl font-bold text-gray-900">
-                  Position Added
-                </DialogTitle>
-                <DialogDescription className="text-gray-700">
-                  <span className="font-semibold text-green-700">
-                    {successLabel}
-                  </span>{" "}
-                  has been added to the HR Positions list.
-                </DialogDescription>
+          <DialogHeader className="text-center sm:text-center border-0 pb-0">
+            <div className="relative mx-auto mb-5 flex h-[5.75rem] w-[5.75rem] items-center justify-center">
+              <span
+                className="absolute inset-0 rounded-full bg-emerald-400/30 motion-safe:animate-ping"
+                style={{ animationDuration: "2.4s" }}
+                aria-hidden
+              />
+              <div
+                className="absolute inset-[3px] rounded-full bg-gradient-to-br from-emerald-100/90 to-green-50 blur-[1px]"
+                aria-hidden
+              />
+              <div className="relative flex h-[4.5rem] w-[4.5rem] items-center justify-center rounded-full bg-gradient-to-br from-emerald-400 via-green-500 to-emerald-700 shadow-[0_12px_40px_-8px_rgba(16,185,129,0.55)] ring-4 ring-white animate-success-badge-pop">
+                <svg
+                  className="h-11 w-11 text-white drop-shadow-sm"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                  aria-hidden
+                >
+                  <path
+                    className="animate-success-check-draw"
+                    d="M6.5 12.5l3.8 3.8L17.8 8.8"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
               </div>
             </div>
+            <DialogTitle className="text-xl font-bold text-gray-900">
+              Position Added
+            </DialogTitle>
+            <DialogDescription className="text-gray-700">
+              <span className="font-semibold text-green-700">{successLabel}</span> has been
+              added to the HR Positions list.
+            </DialogDescription>
+            <p className="text-xs text-gray-500 mt-2">
+              This dialog will close automatically in 3 seconds.
+            </p>
           </DialogHeader>
 
-          <DialogFooter className="border-t border-gray-200 pt-4">
-            <Button
-              className="bg-green-600 hover:bg-green-700 text-white cursor-pointer px-6 hover:scale-110 transition-all duration-200"
-              onClick={() => setIsSuccessDialogOpen(false)}
-              disabled={isSubmitting}
-            >
-              OK
-            </Button>
+          <DialogFooter className="border-t border-gray-200 pt-4 sm:justify-center">
+           
           </DialogFooter>
         </DialogContent>
       </Dialog>
