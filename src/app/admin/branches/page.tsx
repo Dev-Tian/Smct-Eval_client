@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Card,
   CardContent,
@@ -49,6 +49,40 @@ interface newBranch {
   branch_name: string;
   branch: string;
   acronym: string;
+}
+
+function parseCount(value: unknown): number {
+  if (value === null || value === undefined) return 0;
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+
+  const raw = String(value).trim();
+  if (!raw) return 0;
+
+  // Handles formats like "1,234", "10 employees", or "5.5"
+  const normalized = raw.replace(/,/g, "");
+  const direct = Number(normalized);
+  if (!Number.isNaN(direct)) return direct;
+
+  const match = normalized.match(/\d+(\.\d+)?/);
+  return match ? Number(match[0]) : 0;
+}
+
+function getEmployeesCount(branch: Partial<Branches> & Record<string, any>): number {
+  return (
+    parseCount(branch.employees_count) ||
+    parseCount(branch.employeesCount) ||
+    parseCount(branch.employee_count) ||
+    parseCount(branch.employees)
+  );
+}
+
+function getManagersCount(branch: Partial<Branches> & Record<string, any>): number {
+  return (
+    parseCount(branch.managers_count) ||
+    parseCount(branch.managersCount) ||
+    parseCount(branch.manager_count) ||
+    parseCount(branch.managers)
+  );
 }
 
 export default function DepartmentsTab() {
@@ -131,78 +165,89 @@ export default function DepartmentsTab() {
   // Use dialog animation hook (0.4s to match EditUserModal speed)
   const dialogAnimationClass = useDialogAnimation({ duration: 0.4 });
 
-  // Function to load data
+  const branchesInFlightKeyRef = useRef<string | null>(null);
+  const branchesInFlightPromiseRef = useRef<Promise<void> | null>(null);
+  const prevSearchTermForDebounceRef = useRef<string | null>(null);
+
   const loadData = async (search: string) => {
-    try {
-      const response = await apiService.getTotalEmployeesBranch(
-        search,
-        currentPage,
-        itemsPerPage
-      );
+    const requestKey = JSON.stringify({
+      search,
+      currentPage,
+      itemsPerPage,
+    });
 
-      // Handle different response structures
-      let branchesData: Branches[] = [];
-      let total = 0;
-      let lastPage = 1;
-      let perPageValue = itemsPerPage;
-
-      if (response) {
-        // If response has data property (paginated response)
-        if (response.data && Array.isArray(response.data)) {
-          branchesData = response.data;
-          total = response.total || 0;
-          lastPage = response.last_page || 1;
-          perPageValue = response.per_page || itemsPerPage;
-        }
-        // If response is directly an array
-        else if (Array.isArray(response)) {
-          branchesData = response;
-          total = response.length;
-          lastPage = 1;
-          perPageValue = response.length;
-        }
-        // If response has branches property
-        else if (response.branches && Array.isArray(response.branches)) {
-          branchesData = response.branches;
-          total = response.total || response.branches.length;
-          lastPage = response.last_page || 1;
-          perPageValue = response.per_page || itemsPerPage;
-        }
-      }
-
-      setBranches(branchesData);
-      setOverviewTotal(total);
-      setTotalPages(lastPage);
-      setPerPage(perPageValue);
-    } catch (error) {
-      console.error("Error loading branches:", error);
-      // Set empty array on error to prevent undefined errors
-      setBranches([]);
-      setOverviewTotal(0);
-      setTotalPages(1);
-      setPerPage(itemsPerPage);
+    if (
+      branchesInFlightKeyRef.current === requestKey &&
+      branchesInFlightPromiseRef.current
+    ) {
+      await branchesInFlightPromiseRef.current;
+      return;
     }
-  };
 
-  // Load departments and employees when component mounts
-  useEffect(() => {
-    const initializeData = async () => {
-      setLoading(true);
+    const requestPromise = (async () => {
       try {
-        await loadData(searchTerm);
-      } catch (error) {
-        console.error("Error initializing departments:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
+        const response = await apiService.getTotalEmployeesBranch(
+          search,
+          currentPage,
+          itemsPerPage
+        );
 
-    initializeData();
-  }, []);
+        let branchesData: Branches[] = [];
+        let total = 0;
+        let lastPage = 1;
+        let perPageValue = itemsPerPage;
+
+        if (response) {
+          if (response.data && Array.isArray(response.data)) {
+            branchesData = response.data;
+            total = response.total || 0;
+            lastPage = response.last_page || 1;
+            perPageValue = response.per_page || itemsPerPage;
+          } else if (Array.isArray(response)) {
+            branchesData = response;
+            total = response.length;
+            lastPage = 1;
+            perPageValue = response.length;
+          } else if (response.branches && Array.isArray(response.branches)) {
+            branchesData = response.branches;
+            total = response.total || response.branches.length;
+            lastPage = response.last_page || 1;
+            perPageValue = response.per_page || itemsPerPage;
+          }
+        }
+
+        setBranches(branchesData);
+        setOverviewTotal(total);
+        setTotalPages(lastPage);
+        setPerPage(perPageValue);
+      } catch (error) {
+        console.error("Error loading branches:", error);
+        setBranches([]);
+        setOverviewTotal(0);
+        setTotalPages(1);
+        setPerPage(itemsPerPage);
+      } finally {
+        if (branchesInFlightKeyRef.current === requestKey) {
+          branchesInFlightKeyRef.current = null;
+          branchesInFlightPromiseRef.current = null;
+        }
+      }
+    })();
+
+    branchesInFlightKeyRef.current = requestKey;
+    branchesInFlightPromiseRef.current = requestPromise;
+    await requestPromise;
+  };
 
   useEffect(() => {
     const handler = setTimeout(() => {
-      searchTerm === "" ? currentPage : setCurrentPage(1);
+      if (
+        prevSearchTermForDebounceRef.current !== null &&
+        prevSearchTermForDebounceRef.current !== searchTerm
+      ) {
+        setCurrentPage(1);
+      }
+      prevSearchTermForDebounceRef.current = searchTerm;
       setDebouncedSearchTerm(searchTerm);
     }, 500);
 
@@ -211,19 +256,26 @@ export default function DepartmentsTab() {
 
   useEffect(() => {
     const fetchData = async () => {
-      await refreshData();
+      setIsRefreshing(true);
+      try {
+        await loadData(debouncedSearchTerm);
+      } catch (error) {
+        console.error("Error fetching branches:", error);
+      } finally {
+        setLoading(false);
+        setIsRefreshing(false);
+      }
     };
 
-    fetchData();
+    void fetchData();
   }, [debouncedSearchTerm, currentPage]);
 
-  // Function to refresh data
   const refreshData = async () => {
     setIsRefreshing(true);
     try {
-      await loadData(searchTerm);
+      await loadData(debouncedSearchTerm);
     } catch (error) {
-      console.error("❌ Error refreshing branches:", error);
+      console.error("Error refreshing branches:", error);
     } finally {
       setIsRefreshing(false);
     }
@@ -237,7 +289,7 @@ export default function DepartmentsTab() {
     if (validation()) {
       try {
         await apiService.addBranch(formData);
-        loadData(searchTerm);
+        await loadData(debouncedSearchTerm);
         toastMessages.generic.success(
           "Success " + formData.branch_name + " has been added",
           "A new department has been save."
@@ -263,8 +315,8 @@ export default function DepartmentsTab() {
 
     try {
       if (
-        Number(branchesToDelete.employees_count) +
-          Number(branchesToDelete.managers_count) !==
+        getEmployeesCount(branchesToDelete) +
+          getManagersCount(branchesToDelete) !==
         0
       ) {
         toastMessages.generic.warning(
@@ -277,7 +329,7 @@ export default function DepartmentsTab() {
         setIsDeleteModalOpen(false);
         setBranchesToDelete(null);
         // Refresh data to ensure we have the latest branch info
-        await loadData(searchTerm);
+        await loadData(debouncedSearchTerm);
         return;
       } else {
         // Set deleting state to show skeleton animation
@@ -293,7 +345,7 @@ export default function DepartmentsTab() {
         await apiService.deleteBranches(branchesToDelete.id);
         
         // Refresh data first, then reset deleting state after data loads
-        await loadData(searchTerm);
+        await loadData(debouncedSearchTerm);
         setDeletingBranchId(null);
         
         toastMessages.generic.success(
@@ -527,7 +579,7 @@ export default function DepartmentsTab() {
                                 {branch.branch_name + " /" + branch.branch_code}
                                 <div className="flex items-center gap-2">
                                   <Badge variant="outline">
-                                    {branch.employees_count} employees
+                                    {getEmployeesCount(branch)} employees
                                   </Badge>
                                   <Button
                                     variant="ghost"
@@ -554,7 +606,7 @@ export default function DepartmentsTab() {
                               <div className="grid grid-cols-2 gap-4">
                                 <div className="text-center p-3 bg-blue-50 rounded-lg">
                                   <div className="text-lg font-bold text-blue-600">
-                                    {branch.employees_count}
+                                    {getEmployeesCount(branch)}
                                   </div>
                                   <div className="text-xs text-gray-600">
                                     Employees
@@ -562,7 +614,7 @@ export default function DepartmentsTab() {
                                 </div>
                                 <div className="text-center p-3 bg-green-50 rounded-lg">
                                   <div className="text-lg font-bold text-green-600">
-                                    {branch.managers_count}
+                                    {getManagersCount(branch)}
                                   </div>
                                   <div className="text-xs text-gray-600">
                                     Managers
@@ -830,8 +882,8 @@ export default function DepartmentsTab() {
                   </p>
                   <p>
                     <span className="font-medium">No. of employees:</span>{" "}
-                    {(isNaN(Number(branchesToDelete?.employees_count)) ? 0 : Number(branchesToDelete?.employees_count)) +
-                      (isNaN(Number(branchesToDelete?.managers_count)) ? 0 : Number(branchesToDelete?.managers_count))}
+                    {getEmployeesCount(branchesToDelete ?? {}) +
+                      getManagersCount(branchesToDelete ?? {})}
                   </p>
                 </div>
               </div>

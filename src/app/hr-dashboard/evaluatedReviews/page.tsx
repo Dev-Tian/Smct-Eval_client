@@ -3,7 +3,7 @@
 import { Skeleton } from "@/components/ui/skeleton";
 import clientDataService, { apiService } from "@/lib/apiService";
 import EvaluationsPagination from "@/components/paginationComponent";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { Loader2 } from "lucide-react";
 
 import {
@@ -43,9 +43,9 @@ import {
 import { Combobox } from "@/components/ui/combobox";
 
 import ViewResultsModal from "@/components/evaluation/ViewResultsModal";
-import { setQuarter } from "date-fns";
 import { useDialogAnimation } from "@/hooks/useDialogAnimation";
 import { toastMessages } from "@/lib/toastMessages";
+import { cn } from "@/lib/utils";
 interface Review {
   id: number;
   employee: any;
@@ -58,6 +58,67 @@ interface Review {
   rating: number;
   status: string;
 }
+
+/** Single source of truth for rating colors + legend (matches filter: poor / low / good / excellent). */
+const RATING_DISPLAY_BANDS = [
+  {
+    maxExclusive: 2.5,
+    badgeClass: "bg-red-100 text-red-800",
+    legend: "Poor (<2.5)",
+  },
+  {
+    maxExclusive: 3.0,
+    badgeClass: "bg-orange-100 text-orange-800",
+    legend: "Low (<3.0)",
+  },
+  {
+    maxExclusive: 4.0,
+    badgeClass: "bg-blue-100 text-blue-800",
+    legend: "Good (3.0–3.9)",
+  },
+  {
+    maxExclusive: Number.POSITIVE_INFINITY,
+    badgeClass: "bg-green-100 text-green-800",
+    legend: "Excellent (≥4.0)",
+  },
+] as const;
+
+function parseRatingNumber(
+  rating: number | string | null | undefined
+): number | null {
+  if (rating === null || rating === undefined || rating === "") return null;
+  const n = typeof rating === "string" ? parseFloat(rating) : Number(rating);
+  return Number.isNaN(n) ? null : n;
+}
+
+function getRatingBadgeClassFromBands(
+  rating: number | string | null | undefined
+): string {
+  const n = parseRatingNumber(rating);
+  if (n === null) return "bg-gray-100 text-gray-600";
+  for (const band of RATING_DISPLAY_BANDS) {
+    if (n < band.maxExclusive) return band.badgeClass;
+  }
+  return RATING_DISPLAY_BANDS[RATING_DISPLAY_BANDS.length - 1].badgeClass;
+}
+
+/** List rows may use `rating`, snake_case, or omit until scored — 0 is treated as not rated (same as other HR screens). */
+function getReviewListRating(review: Review | null | undefined): number | null {
+  if (!review) return null;
+  const extended = review as Review & {
+    overall_rating?: number | string | null;
+    overallRating?: number | string | null;
+  };
+  const raw =
+    extended.rating ?? extended.overall_rating ?? extended.overallRating;
+  const n = parseRatingNumber(raw as number | string | null | undefined);
+  if (n === null) return null;
+  if (n === 0) return null;
+  return n;
+}
+
+const ratingPillClass =
+  "inline-flex items-center justify-center rounded-md border border-transparent px-2 py-0.5 text-xs font-medium whitespace-nowrap";
 
 export default function OverviewTab() {
   const [evaluations, setEvaluations] = useState<Review[]>([]);
@@ -82,6 +143,24 @@ export default function OverviewTab() {
   const [debouncedBranchFilter, setDebouncedBranchFilter] =
     useState(branchFilter);
 
+  const hasActiveDebouncedFilters = useMemo(() => {
+    if (debouncedSearchTerm.trim() !== "") return true;
+    const isAll = (v: string) => v === "" || v === "0";
+    if (!isAll(debouncedStatusFilter)) return true;
+    if (!isAll(debouncedQuarterFilter)) return true;
+    if (!isAll(debouncedYearFilter)) return true;
+    if (!isAll(debouncedRatingFilter)) return true;
+    if (!isAll(debouncedBranchFilter)) return true;
+    return false;
+  }, [
+    debouncedSearchTerm,
+    debouncedStatusFilter,
+    debouncedQuarterFilter,
+    debouncedYearFilter,
+    debouncedRatingFilter,
+    debouncedBranchFilter,
+  ]);
+
   const [isViewResultsModalOpen, setIsViewResultsModalOpen] = useState(false);
   const [selectedSubmission, setSelectedSubmission] = useState<any>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -97,6 +176,7 @@ export default function OverviewTab() {
   const [branchesData, setBranchesData] = useState<any[]>([]);
   const submissionsInFlightKeyRef = useRef<string | null>(null);
   const submissionsInFlightPromiseRef = useRef<Promise<void> | null>(null);
+  const prevFilterSnapshotForPageRef = useRef<string | null>(null);
 
   // Helper function to get branch code from branch data
   const getBranchCode = (branch: any): string => {
@@ -268,10 +348,16 @@ export default function OverviewTab() {
           normalizedRating,
           normalizedBranch
         );
-        setEvaluations(response.data);
-        setOverviewTotal(response.total);
-        setTotalPages(response.last_page);
-        setPerPage(response.per_page);
+        setEvaluations(response?.data ?? []);
+        setOverviewTotal(response?.total ?? 0);
+        setTotalPages(response?.last_page ?? 1);
+        setPerPage(response?.per_page ?? itemsPerPage);
+      } catch (error) {
+        console.error("Error loading evaluations:", error);
+        setEvaluations([]);
+        setOverviewTotal(0);
+        setTotalPages(1);
+        setPerPage(itemsPerPage);
       } finally {
         if (submissionsInFlightKeyRef.current === requestKey) {
           submissionsInFlightKeyRef.current = null;
@@ -296,8 +382,7 @@ export default function OverviewTab() {
         setYears(years);
         setBranchesData(branches);
       } catch (error) {
-        console.log(error);
-        setRefreshing(false);
+        console.error("Error loading years/branches:", error);
       } finally {
         setRefreshing(false);
       }
@@ -307,8 +392,22 @@ export default function OverviewTab() {
 
   useEffect(() => {
     const handler = setTimeout(() => {
-      // Always reset to page 1 when any filter changes
-      setCurrentPage(1);
+      const snapshot = JSON.stringify({
+        searchTerm,
+        statusFilter,
+        quarterFilter,
+        yearFilter,
+        ratingFilter,
+        branchFilter,
+      });
+      if (
+        prevFilterSnapshotForPageRef.current !== null &&
+        prevFilterSnapshotForPageRef.current !== snapshot
+      ) {
+        setCurrentPage(1);
+      }
+      prevFilterSnapshotForPageRef.current = snapshot;
+
       setDebouncedSearchTerm(searchTerm);
       setDebouncedStatusFilter(statusFilter);
       setDebouncedQuarterFilter(quarterFilter);
@@ -389,6 +488,11 @@ export default function OverviewTab() {
     return "bg-purple-100 text-purple-800";
   };
 
+  const formatRatingDisplay = (rating: number | null): string => {
+    if (rating === null) return "—";
+    return rating % 1 === 0 ? String(rating) : rating.toFixed(2);
+  };
+
   const handleViewEvaluation = async (review: Review) => {
     try {
       const submission = await clientDataService.getSubmissionById(review.id);
@@ -409,7 +513,10 @@ export default function OverviewTab() {
       await clientDataService.deleteSubmission(submission.id);
       await handleRefresh();
       toastMessages.evaluation.deleted(
-        submission.employee?.fname + " " + submission.employee?.lname
+        [submission.employee?.fname, submission.employee?.lname]
+          .filter(Boolean)
+          .join(" ")
+          .trim() || "—"
       );
     } catch (error) {
       console.error("Error deleting submission:", error);
@@ -701,6 +808,18 @@ export default function OverviewTab() {
                   Completed
                 </Badge>
               </div>
+              <span className="text-sm font-medium text-gray-700 mr-2 w-full sm:w-auto mt-2 sm:mt-0">
+                Rating:
+              </span>
+              {RATING_DISPLAY_BANDS.map((band) => (
+                <div key={band.legend} className="flex items-center gap-1">
+                  <span
+                    className={cn(ratingPillClass, band.badgeClass, "text-xs")}
+                  >
+                    {band.legend}
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -803,7 +922,7 @@ export default function OverviewTab() {
                             }}
                           />
                           <div className="text-gray-500">
-                            {searchTerm ? (
+                            {hasActiveDebouncedFilters ? (
                               <>
                                 <p className="text-base font-medium mb-1">
                                   No results found
@@ -854,25 +973,26 @@ export default function OverviewTab() {
                         rowClassName =
                           "bg-orange-50 hover:bg-orange-100 border-l-4 border-l-orange-500 transition-colors";
                       }
-                      console.log("test", review);
                       return (
                         <TableRow key={review.id} className={rowClassName}>
                           <TableCell className="px-6 py-3">
                             <div>
                               <div className="flex items-center gap-2 mb-1">
                                 <span className="font-medium text-gray-900">
-                                  {review.employee?.fname +
-                                    " " +
-                                    review.employee?.lname}
+                                  {[review.employee?.fname, review.employee?.lname]
+                                    .filter(Boolean)
+                                    .join(" ")
+                                    .trim() || "—"}
                                 </span>
                               </div>
                             </div>
                           </TableCell>
                           <TableCell className="px-6 py-3">
                             <div className="font-medium text-gray-900">
-                              {review.evaluator?.fname +
-                                " " +
-                                review.evaluator?.lname}
+                              {[review.evaluator?.fname, review.evaluator?.lname]
+                                .filter(Boolean)
+                                .join(" ")
+                                .trim() || "—"}
                             </div>
                           </TableCell>
                           <TableCell className="px-6 py-3 text-sm text-gray-600">
@@ -924,8 +1044,20 @@ export default function OverviewTab() {
                               }
                             )}
                           </TableCell>
-                          <TableCell className="px-6 py-3 text-sm text-gray-600">
-                            {review.rating}
+                          <TableCell className="px-6 py-3 text-sm">
+                            {(() => {
+                              const ratingValue = getReviewListRating(review);
+                              return (
+                                <span
+                                  className={cn(
+                                    ratingPillClass,
+                                    getRatingBadgeClassFromBands(ratingValue)
+                                  )}
+                                >
+                                  {formatRatingDisplay(ratingValue)}
+                                </span>
+                              );
+                            })()}
                           </TableCell>
                           <TableCell className="px-6 py-3">
                             <Badge
@@ -958,7 +1090,8 @@ export default function OverviewTab() {
                             )}
                           </TableCell>
                           <TableCell className="px-6 py-3 text-sm text-gray-600">
-                            {review.evaluator.roles[0].name === "evaluator" ? (
+                            {review.evaluator?.roles?.[0]?.name ===
+                            "evaluator" ? (
                               <Badge className="bg-green-100 text-green-800 text-xs">
                                 ✓ Signed
                               </Badge>
@@ -967,7 +1100,7 @@ export default function OverviewTab() {
                             )}
                           </TableCell>
                           <TableCell className="px-6 py-3 text-sm text-gray-600">
-                            {review.evaluator.roles[0].name === "hr" ? (
+                            {review.evaluator?.roles?.[0]?.name === "hr" ? (
                               <Badge className="bg-green-100 text-green-800 text-xs">
                                 ✓ Signed
                               </Badge>
@@ -1007,7 +1140,7 @@ export default function OverviewTab() {
           </div>
 
           {/* Pagination Controls */}
-          {overviewTotal > itemsPerPage && (
+          {totalPages > 1 && (
             <EvaluationsPagination
               currentPage={currentPage}
               totalPages={totalPages}
