@@ -63,20 +63,14 @@ export interface MemorandumViolationModalProps {
 const WORD_ACCEPT =
   ".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
-/** Date + attachment summary for the Data column (title has its own column). */
-function formatDataColumn(row: MemorandumSessionRow): string {
-  const bits: string[] = [];
-  if (row.violation_date) {
-    try {
-      bits.push(format(parseISO(row.violation_date), "MMM d, yyyy"));
-    } catch {
-      bits.push(row.violation_date);
-    }
+/** Formatted violation date for the Date column. */
+function formatViolationDateCell(row: MemorandumSessionRow): string {
+  if (!row.violation_date) return "—";
+  try {
+    return format(parseISO(row.violation_date), "MMM d, yyyy");
+  } catch {
+    return row.violation_date;
   }
-  if (row.fileName) {
-    bits.push(`Attachment: ${row.fileName}`);
-  }
-  return bits.length ? bits.join(" · ") : "—";
 }
 
 export default function MemorandumViolationModal({
@@ -411,8 +405,8 @@ export default function MemorandumViolationModal({
                       <TableHead className="font-semibold text-amber-900 min-w-[140px]">
                         Title
                       </TableHead>
-                      <TableHead className="font-semibold text-amber-900">
-                        Data
+                      <TableHead className="font-semibold text-amber-900 min-w-[120px] whitespace-nowrap">
+                        Date
                       </TableHead>
                       <TableHead className="font-semibold text-amber-900 w-[120px] text-right">
                         Action
@@ -438,8 +432,8 @@ export default function MemorandumViolationModal({
                           <TableCell className="text-gray-900 text-sm font-medium">
                             {row.title}
                           </TableCell>
-                          <TableCell className="text-gray-700 text-sm">
-                            {formatDataColumn(row)}
+                          <TableCell className="text-gray-700 text-sm whitespace-nowrap">
+                            {formatViolationDateCell(row)}
                           </TableCell>
                           <TableCell className="text-right">
                             <Button
