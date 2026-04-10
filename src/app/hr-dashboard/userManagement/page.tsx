@@ -58,7 +58,10 @@ import { useDialogAnimation } from "@/hooks/useDialogAnimation";
 import EvaluationsPagination from "@/components/paginationComponent";
 import ViewEmployeeModal from "@/components/ViewEmployeeModal";
 import { User, useAuth } from "@/contexts/UserContext";
-import { sortUsersAlphabeticallyByName } from "@/lib/sortUsersByName";
+import {
+  dedupeUsersById,
+  sortUsersAlphabeticallyByName,
+} from "@/lib/sortUsersByName";
 import { Combobox } from "@/components/ui/combobox";
 import EvaluationForm from "@/components/evaluation";
 import EvaluationTypeModal from "@/components/EvaluationTypeModal";
@@ -478,7 +481,9 @@ export default function UserManagementTab() {
         itemsPerPage
       );
 
-      setPendingRegistrations(sortUsersAlphabeticallyByName(response.data));
+      setPendingRegistrations(
+        dedupeUsersById(Array.isArray(response.data) ? response.data : [])
+      );
       setPendingTotalItems(response.total);
       setTotalPendingPages(response.last_page);
       setPerPage(response.per_page);
@@ -537,7 +542,9 @@ export default function UserManagementTab() {
           normalizedBranch
         );
 
-        setActiveRegistrations(sortUsersAlphabeticallyByName(response.data));
+        setActiveRegistrations(
+          dedupeUsersById(Array.isArray(response.data) ? response.data : [])
+        );
         setActiveTotalItems(response.total);
         setTotalActivePages(response.last_page);
         setPerPage(response.per_page);
