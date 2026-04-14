@@ -3108,17 +3108,12 @@ export default function UserManagementTab() {
               <div className="flex justify-end">
                 <Button
                   type="button"
-                  onClick={() => {
-                    const b = branchQuarterBranchId;
-                    setIsBranchQuarterModalOpen(false);
-                    setEmployeeForMemorandumViolation(null);
-                    setMemorandumPickerBranchId(b || undefined);
-                    setIsMemorandumViolationModalOpen(true);
-                  }}
-                  className="cursor-pointer bg-amber-600 hover:bg-amber-700 text-white rounded-lg shadow-sm transition-all hover:shadow-md"
+                  onClick={handleExportBranchQuarterCSV}
+                  disabled={isExporting}
+                  className="cursor-pointer bg-green-600 hover:bg-green-700 text-white rounded-lg shadow-sm transition-all hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <FileWarning className="h-4 w-4 mr-2" />
-                  Add memorandum
+                  <Download className="h-4 w-4 mr-2" />
+                  Export CSV
                 </Button>
               </div>
             )}
