@@ -110,7 +110,7 @@ export default function BranchManagersModal({
           <Button
             variant="outline"
             onClick={() => onOpenChange(false)}
-            className="cursor-pointer min-w-24"
+            className="cursor-pointer min-w-24 bg-red-500 hover:bg-red-600 text-white hover:text-white cursor-pointer hover:scale-110 transition-transform duration-200 shadow-lg hover:shadow-xl transition-all duration-300"
           >
             Close
           </Button>
