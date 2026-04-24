@@ -230,41 +230,26 @@ export default function DepartmentsTab() {
     if (!departmentToDelete) return;
 
     try {
-      if (
-        Number(departmentToDelete.employees_count) +
-          Number(departmentToDelete.managers_count) !==
-        0
-      ) {
-        // Close modal and show alert dialog instead of toast
-        setIsDeleteModalOpen(false);
-        setDepartmentWithEmployees(departmentToDelete);
-        setIsAlertDialogOpen(true);
-        setDepartmentToDelete(null);
-        // Refresh data to ensure we have the latest department info
-        await loadData(debouncedSearchTerm);
-        return;
-      } else {
-        // Set deleting state to show skeleton animation
-        setDeletingDepartmentId(departmentToDelete.id);
+      // Set deleting state to show skeleton animation
+      setDeletingDepartmentId(departmentToDelete.id);
 
-        // Close modal immediately
-        setIsDeleteModalOpen(false);
+      // Close modal immediately
+      setIsDeleteModalOpen(false);
 
-        // Wait 2 seconds to show skeleton animation
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+      // Wait 2 seconds to show skeleton animation
+      await new Promise((resolve) => setTimeout(resolve, 2000));
 
-        // Actually delete the department
-        await apiService.deleteDepartment(departmentToDelete.id);
+      // Actually delete the department
+      await apiService.deleteDepartment(departmentToDelete.id);
 
-        // Refresh data first, then reset deleting state after data loads
-        await loadData(debouncedSearchTerm);
-        setDeletingDepartmentId(null);
+      // Refresh data first, then reset deleting state after data loads
+      await loadData(debouncedSearchTerm);
+      setDeletingDepartmentId(null);
 
-        toastMessages.generic.success(
-          "Department Deleted",
-          `"${departmentToDelete.department_name}" has been deleted successfully.`
-        );
-      }
+      toastMessages.generic.success(
+        "Department Deleted",
+        `"${departmentToDelete.department_name}" has been deleted successfully.`
+      );
     } catch (error) {
       console.error("Error deleting department:", error);
       setDeletingDepartmentId(null);
@@ -582,9 +567,6 @@ export default function DepartmentsTab() {
                               <CardTitle className="flex justify-between items-center">
                                 {dept.department_name}
                                 <div className="flex items-center gap-2">
-                                  <Badge variant="outline">
-                                    {dept.employees_count} employees
-                                  </Badge>
                                   <Button
                                     variant="ghost"
                                     size="sm"
@@ -883,20 +865,6 @@ export default function DepartmentsTab() {
   `}
                 onClick={async () => {
                   if (!departmentToDelete) return;
-
-                  // Check if department has employees before proceeding
-                  const totalEmployees = 
-                    (isNaN(Number(departmentToDelete.employees_count)) ? 0 : Number(departmentToDelete.employees_count)) +
-                    (isNaN(Number(departmentToDelete.managers_count)) ? 0 : Number(departmentToDelete.managers_count));
-
-                  if (totalEmployees > 0) {
-                    // Close delete modal and show alert dialog
-                    setIsDeleteModalOpen(false);
-                    setDepartmentWithEmployees(departmentToDelete);
-                    setIsAlertDialogOpen(true);
-                    setDepartmentToDelete(null);
-                    return;
-                  }
 
                   // Proceed with deletion if no employees
                   setIsDeletingDepartment(true);
