@@ -245,7 +245,7 @@ export default function DashboardShell(props: DashboardShellProps) {
 
     if (isHRDashboard) {
       if (
-        ["departments", "branches", "branch-heads", "area-managers"].includes(
+        ["departments", "branches", "branch-heads", "area-managers", "subordinates"].includes(
           activeItemId
         ) &&
         !isManagementOpen
@@ -810,6 +810,7 @@ export default function DashboardShell(props: DashboardShellProps) {
                         .filter(
                           (id) =>
                             ![
+                              "subordinates",
                               "departments",
                               "branches",
                               "branch-heads",
@@ -837,6 +838,7 @@ export default function DashboardShell(props: DashboardShellProps) {
                   // leadership includes branch-heads and area-managers.
                   const managementItems = isHRDashboard
                     ? [
+                        "subordinates",
                         "departments",
                         "branches",
                         "branch-heads",
@@ -889,7 +891,13 @@ export default function DashboardShell(props: DashboardShellProps) {
                               />
                             </button>
                           </CollapsibleTrigger>
-                          <CollapsibleContent className="pl-4 mt-2 space-y-1">
+                          <CollapsibleContent
+                            className={`pl-4 mt-2 space-y-1 ${
+                              isHRDashboard
+                                ? "max-h-[220px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-transparent scrollbar-track-transparent"
+                                : ""
+                            }`}
+                          >
                             {sidebarItems
                               .filter((i) => managementItems.includes(i.id))
                               .map((subItem) => (
@@ -946,7 +954,13 @@ export default function DashboardShell(props: DashboardShellProps) {
                               />
                             </button>
                           </CollapsibleTrigger>
-                          <CollapsibleContent className="pl-4 mt-2 space-y-1">
+                          <CollapsibleContent
+                            className={`pl-4 mt-2 space-y-1 ${
+                              isHRDashboard
+                                ? "max-h-[220px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-transparent scrollbar-track-transparent"
+                                : ""
+                            }`}
+                          >
                             {sidebarItems
                               .filter((i) => leadershipItems.includes(i.id))
                               .map((subItem) => (
