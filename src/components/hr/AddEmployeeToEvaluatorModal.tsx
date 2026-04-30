@@ -69,15 +69,12 @@ function normalizeCandidate(raw: Record<string, unknown>): CandidateEmployee {
     String(raw.full_name ?? "").trim() || `${firstName} ${lastName}`.trim() || "N/A";
 
   return {
-    // For assignment/unassignment endpoints, the backend typically expects the employee identifier
-    // (often `emp_id`). Prefer it when available to avoid "no-op" updates.
+    // assignEmployees expects user record `id` (not profile `emp_id`).
     id: String(
-      raw.emp_id ??
-        raw.empId ??
+      raw.id ??
+        raw.user_id ??
         raw.employee_id ??
         raw.employeeId ??
-        raw.id ??
-        raw.user_id ??
         `${fullName}-${raw.email ?? "unknown"}`
     ),
     name: fullName,
