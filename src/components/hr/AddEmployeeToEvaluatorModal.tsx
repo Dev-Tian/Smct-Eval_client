@@ -490,7 +490,7 @@ export default function AddEmployeeToEvaluatorModal({
               variant="outline"
               onClick={() => onOpenChange(false)}
               disabled={saving}
-              className="cursor-pointer min-w-24"
+              className="cursor-pointer min-w-24 bg-red-600 hover:bg-red-700 text-white hover:text-white hover:scale-110 transition-transform duration-200 shadow-lg hover:shadow-xl transition-all duration-300"
             >
               Cancel
             </Button>
