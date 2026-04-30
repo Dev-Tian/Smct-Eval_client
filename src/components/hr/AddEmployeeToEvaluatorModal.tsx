@@ -297,7 +297,11 @@ export default function AddEmployeeToEvaluatorModal({
       });
 
       try {
-        await apiService.assignEmployeesBlank(evaluator.id);
+        // Single-row unassign only — blank POST clears everyone on the backend.
+        await apiService.assignEmployees(evaluator.id, {
+          employeeIds: [employeeId],
+          action: "unassign",
+        });
 
         setSelectedIds((prev) => {
           const next = new Set(prev);
