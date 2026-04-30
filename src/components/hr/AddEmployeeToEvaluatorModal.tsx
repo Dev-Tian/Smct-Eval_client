@@ -132,9 +132,12 @@ export default function AddEmployeeToEvaluatorModal({
   const [isSuccessDialogOpen, setIsSuccessDialogOpen] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
 
-  const loadEmployees = useCallback(async () => {
+  const loadEmployees = useCallback(async (options?: { silent?: boolean }) => {
     if (!evaluator) return;
-    setLoading(true);
+    const silent = options?.silent === true;
+    if (!silent) {
+      setLoading(true);
+    }
     try {
       const [assignedResponse, unassignedResponse] = await Promise.all([
         apiService.getAllEvaluatorAssignedEmployees(evaluator.id, {
@@ -188,7 +191,9 @@ export default function AddEmployeeToEvaluatorModal({
         "Please try again."
       );
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   }, [evaluator]);
 
@@ -284,7 +289,6 @@ export default function AddEmployeeToEvaluatorModal({
   const handleUnassign = useCallback(
     async (employeeId: string) => {
       if (!evaluator) return;
-      if (saving) return;
 
       setUnassigningIds((prev) => {
         const next = new Set(prev);
@@ -293,22 +297,24 @@ export default function AddEmployeeToEvaluatorModal({
       });
 
       try {
-        await apiService.assignEmployees(evaluator.id, {
-          employeeIds: [employeeId],
-          action: "unassign",
-        });
+        await apiService.assignEmployeesBlank(evaluator.id);
 
-        setSelectedIds(new Set());
-        setSearch("");
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          next.delete(employeeId);
+          return next;
+        });
         setUnassigningIds(new Set());
-        await loadEmployees();
+
+        await loadEmployees({ silent: true });
       } catch (error) {
         console.error("Failed to unassign employee:", error);
         toastMessages.generic.error("Unassign failed", "Please try again.");
         setUnassigningIds(new Set());
+        void loadEmployees({ silent: true });
       }
     },
-    [evaluator, saving, loadEmployees]
+    [evaluator, loadEmployees]
   );
 
   return (
