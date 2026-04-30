@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { Loader2, Plus, UserPlus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -116,6 +122,28 @@ function extractEmployees(raw: unknown): unknown[] {
   return [];
 }
 
+function sortCandidatesByName(a: CandidateEmployee, b: CandidateEmployee) {
+  return a.name.localeCompare(b.name);
+}
+
+function normalizeEmployeeList(list: unknown[]): CandidateEmployee[] {
+  return list
+    .filter(
+      (item) =>
+        item &&
+        typeof item === "object" &&
+        isEmployeeRole((item as Record<string, unknown>).roles)
+    )
+    .map((item) =>
+      normalizeCandidate(
+        item && typeof item === "object"
+          ? (item as Record<string, unknown>)
+          : ({} as Record<string, unknown>)
+      )
+    )
+    .sort(sortCandidatesByName);
+}
+
 export default function AddEmployeeToEvaluatorModal({
   open,
   onOpenChange,
@@ -124,7 +152,10 @@ export default function AddEmployeeToEvaluatorModal({
 }: AddEmployeeToEvaluatorModalProps) {
   const [assignedRows, setAssignedRows] = useState<CandidateEmployee[]>([]);
   const [unassignedRows, setUnassignedRows] = useState<CandidateEmployee[]>([]);
-  const [loading, setLoading] = useState(false);
+  /** Smaller request — show “Already assigned” as soon as this finishes. */
+  const [loadingAssigned, setLoadingAssigned] = useState(false);
+  /** Larger pool — bottom table fills when this finishes. */
+  const [loadingPool, setLoadingPool] = useState(false);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -136,51 +167,34 @@ export default function AddEmployeeToEvaluatorModal({
     if (!evaluator) return;
     const silent = options?.silent === true;
     if (!silent) {
-      setLoading(true);
+      setAssignedRows([]);
+      setUnassignedRows([]);
+      setLoadingAssigned(true);
+      setLoadingPool(true);
     }
     try {
-      const [assignedResponse, unassignedResponse] = await Promise.all([
-        apiService.getAllEvaluatorAssignedEmployees(evaluator.id, {
-          page: 1,
-          per_page: 500,
-        }),
-        apiService.getAllEvaluatorEmployees(evaluator.id, {
-          page: 1,
-          per_page: 2000,
-        }),
-      ]);
-
+      // Sequential: assigned payload is small — user sees the top table sooner; then load the big pool.
+      const assignedResponse = await apiService.getAllEvaluatorAssignedEmployees(
+        evaluator.id,
+        { page: 1, per_page: 500 }
+      );
       const assignedList = extractEmployees(assignedResponse);
+      const normalizedAssigned = normalizeEmployeeList(assignedList);
+      setAssignedRows(normalizedAssigned);
+      if (!silent) {
+        setLoadingAssigned(false);
+      }
+
+      const unassignedResponse = await apiService.getAllEvaluatorEmployees(
+        evaluator.id,
+        { page: 1, per_page: 2000 }
+      );
       const unassignedList = extractEmployees(unassignedResponse);
-
-      const normalizeList = (list: unknown[]) =>
-        list
-          .filter(
-            (item) =>
-              item &&
-              typeof item === "object" &&
-              isEmployeeRole((item as Record<string, unknown>).roles)
-          )
-          .map((item) =>
-            normalizeCandidate(
-              item && typeof item === "object"
-                ? (item as Record<string, unknown>)
-                : ({} as Record<string, unknown>)
-            )
-          )
-          .sort((a: CandidateEmployee, b: CandidateEmployee) =>
-            a.name.localeCompare(b.name)
-          );
-
-      const normalizedAssigned = normalizeList(assignedList);
       const assignedIdSet = new Set(normalizedAssigned.map((x) => x.id));
-
-      const normalizedUnassignedAll = normalizeList(unassignedList);
+      const normalizedUnassignedAll = normalizeEmployeeList(unassignedList);
       const normalizedUnassigned = normalizedUnassignedAll.filter(
         (x) => !assignedIdSet.has(x.id)
       );
-
-      setAssignedRows(normalizedAssigned);
       setUnassignedRows(normalizedUnassigned);
     } catch (error) {
       console.error("Failed to load evaluator employees:", error);
@@ -192,7 +206,8 @@ export default function AddEmployeeToEvaluatorModal({
       );
     } finally {
       if (!silent) {
-        setLoading(false);
+        setLoadingAssigned(false);
+        setLoadingPool(false);
       }
     }
   }, [evaluator]);
@@ -212,8 +227,10 @@ export default function AddEmployeeToEvaluatorModal({
     return () => window.clearTimeout(timeoutId);
   }, [isSuccessDialogOpen]);
 
+  const deferredSearch = useDeferredValue(search);
+
   const filteredAssignedRows = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = deferredSearch.trim().toLowerCase();
     if (!q) return assignedRows;
     return assignedRows.filter((row) => {
       return (
@@ -222,10 +239,10 @@ export default function AddEmployeeToEvaluatorModal({
         row.position.toLowerCase().includes(q)
       );
     });
-  }, [assignedRows, search]);
+  }, [assignedRows, deferredSearch]);
 
   const filteredUnassignedRows = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = deferredSearch.trim().toLowerCase();
     if (!q) return unassignedRows;
     return unassignedRows.filter((row) => {
       return (
@@ -234,7 +251,7 @@ export default function AddEmployeeToEvaluatorModal({
         row.position.toLowerCase().includes(q)
       );
     });
-  }, [unassignedRows, search]);
+  }, [unassignedRows, deferredSearch]);
 
   const handleToggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -318,14 +335,22 @@ export default function AddEmployeeToEvaluatorModal({
           });
         }
 
+        const removed = assignedRows.find((r) => r.id === employeeId);
+        setAssignedRows((prev) =>
+          prev.filter((r) => r.id !== employeeId).sort(sortCandidatesByName)
+        );
+        if (removed) {
+          setUnassignedRows((prev) =>
+            [...prev, removed].sort(sortCandidatesByName)
+          );
+        }
+
         setSelectedIds((prev) => {
           const next = new Set(prev);
           next.delete(employeeId);
           return next;
         });
         setUnassigningIds(new Set());
-
-        await loadEmployees({ silent: true });
       } catch (error) {
         console.error("Failed to unassign employee:", error);
         toastMessages.generic.error("Unassign failed", "Please try again.");
@@ -360,27 +385,27 @@ export default function AddEmployeeToEvaluatorModal({
               placeholder="Search employee by name, email, or position..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              disabled={loading || saving}
+              disabled={saving}
               className="w-full sm:max-w-md"
             />
 
-            {loading ? (
-              <div className="flex items-center justify-center py-16 gap-2 text-gray-500">
-                <Loader2 className="h-5 w-5 animate-spin" />
-                Loading employees...
-              </div>
-            ) : (
-              <div className="space-y-4">
+            <div className="space-y-4">
                 <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
                   <div className="flex items-center justify-between border-b bg-slate-100 px-4 py-2.5">
                     <p className="text-sm font-semibold text-slate-700">
                       Already Assigned Employees
                     </p>
                     <Badge variant="outline" className="bg-white">
-                      {filteredAssignedRows.length}
+                      {loadingAssigned ? "…" : filteredAssignedRows.length}
                     </Badge>
                   </div>
-                  <div className="max-h-[22vh] overflow-auto">
+                  <div className="max-h-[22vh] overflow-auto min-h-[120px]">
+                    {loadingAssigned ? (
+                      <div className="flex items-center justify-center py-12 gap-2 text-slate-500 text-sm">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Loading assigned…
+                      </div>
+                    ) : (
                     <Table wrapperClassName="rounded-lg">
                       <TableHeader className="sticky top-0 z-10 bg-slate-50">
                         <TableRow>
@@ -423,6 +448,7 @@ export default function AddEmployeeToEvaluatorModal({
                         )}
                       </TableBody>
                     </Table>
+                    )}
                   </div>
                 </div>
 
@@ -433,14 +459,20 @@ export default function AddEmployeeToEvaluatorModal({
                     </p>
                     <div className="flex items-center gap-2">
                       <Badge variant="outline" className="bg-white text-blue-900">
-                        {filteredUnassignedRows.length}
+                        {loadingPool ? "…" : filteredUnassignedRows.length}
                       </Badge>
                       <Badge variant="outline" className="bg-white">
                         Selected: {selectedIds.size}
                       </Badge>
                     </div>
                   </div>
-                  <div className="max-h-[30vh] overflow-auto">
+                  <div className="max-h-[30vh] overflow-auto min-h-[120px]">
+                    {loadingPool ? (
+                      <div className="flex items-center justify-center py-14 gap-2 text-slate-500 text-sm">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Loading employee pool…
+                      </div>
+                    ) : (
                     <Table wrapperClassName="rounded-lg">
                       <TableHeader className="sticky top-0 z-10 bg-slate-50">
                         <TableRow>
@@ -479,10 +511,10 @@ export default function AddEmployeeToEvaluatorModal({
                         )}
                       </TableBody>
                     </Table>
+                    )}
                   </div>
                 </div>
               </div>
-            )}
           </div>
 
           <DialogFooter className="px-6 pb-6 pt-2 border-t bg-gray-50/95">
@@ -490,14 +522,14 @@ export default function AddEmployeeToEvaluatorModal({
               variant="outline"
               onClick={() => onOpenChange(false)}
               disabled={saving}
-              className="cursor-pointer min-w-24"
+              className="cursor-pointer min-w-24 bg-red-600 hover:bg-red-700 text-white hover:text-white hover:scale-110 transition-transform duration-200 shadow-lg hover:shadow-xl transition-all duration-300"
             >
               Cancel
             </Button>
             <Button
               type="button"
               onClick={handleAssign}
-              disabled={saving || loading || selectedIds.size === 0}
+              disabled={saving || loadingPool || selectedIds.size === 0}
               className="cursor-pointer min-w-32 bg-blue-600 text-white hover:bg-blue-700 hover:text-white hover:scale-110 transition-transform duration-200 shadow-lg hover:shadow-xl transition-all duration-300"
             >
               {saving ? (
