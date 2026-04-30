@@ -523,7 +523,7 @@ export const apiService = {
     userId: string | number,
     payload: {
       employeeIds: Array<string | number>;
-      action?: "assign";
+      action?: "assign" | "unassign";
     }
   ): Promise<any> => {
     const formData = new FormData();
@@ -540,8 +540,9 @@ export const apiService = {
   },
 
   /**
-   * Unassign flow: POST /assignEmployees/{user} with an intentionally blank body (no fields).
-   * Backend uses empty payload per product rules.
+   * POST /assignEmployees/{user} with empty FormData — many backends treat this as “clear all”
+   * assignments for that evaluator. Do not use for unchecking a single row; use assignEmployees
+   * with action "unassign" and one id instead.
    */
   assignEmployeesBlank: async (userId: string | number): Promise<any> => {
     const response = await api.post(

@@ -297,7 +297,20 @@ export default function AddEmployeeToEvaluatorModal({
       });
 
       try {
-        await apiService.assignEmployeesBlank(evaluator.id);
+        // Sync model: payload lists only who should **stay** assigned. The unchecked
+        // employee is omitted entirely (not sent as unassign / not in employee_ids).
+        const remainingIds = assignedRows
+          .filter((r) => r.id !== employeeId)
+          .map((r) => r.id);
+
+        if (remainingIds.length === 0) {
+          await apiService.assignEmployeesBlank(evaluator.id);
+        } else {
+          await apiService.assignEmployees(evaluator.id, {
+            employeeIds: remainingIds,
+            action: "assign",
+          });
+        }
 
         setSelectedIds((prev) => {
           const next = new Set(prev);
@@ -314,7 +327,7 @@ export default function AddEmployeeToEvaluatorModal({
         void loadEmployees({ silent: true });
       }
     },
-    [evaluator, loadEmployees]
+    [evaluator, assignedRows, loadEmployees]
   );
 
   return (
