@@ -516,27 +516,37 @@ export const apiService = {
   },
 
   /**
-   * Assign/unassign evaluator employees.
-   * Backend-provided endpoint: POST /assignEmployees/{user}
+   * Assign evaluator employees.
+   * Backend: POST /assignEmployees/{user} with employee_ids + action.
    */
   assignEmployees: async (
     userId: string | number,
     payload: {
       employeeIds: Array<string | number>;
-      action?: "assign" | "unassign";
+      action?: "assign";
     }
   ): Promise<any> => {
     const formData = new FormData();
-    // User record ids only (e.g. `2,5,9`) — not `emp_id` from profile.
     const employeeIdsCsv = payload.employeeIds.map(String).map((s) => s.trim()).filter(Boolean).join(",");
 
-    // Backend expects `employee_ids` key.
     formData.append("employee_ids", employeeIdsCsv);
     formData.append("action", payload.action ?? "assign");
 
     const response = await api.post(
       `/assignEmployees/${encodeURIComponent(String(userId))}`,
       formData
+    );
+    return response.data;
+  },
+
+  /**
+   * Unassign flow: POST /assignEmployees/{user} with an intentionally blank body (no fields).
+   * Backend uses empty payload per product rules.
+   */
+  assignEmployeesBlank: async (userId: string | number): Promise<any> => {
+    const response = await api.post(
+      `/assignEmployees/${encodeURIComponent(String(userId))}`,
+      new FormData()
     );
     return response.data;
   },
