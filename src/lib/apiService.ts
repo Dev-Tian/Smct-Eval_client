@@ -527,11 +527,28 @@ export const apiService = {
     }
   ): Promise<any> => {
     const formData = new FormData();
-    // Backend expects comma-separated ids in form-data (e.g. "1,2,3").
-    const employeeIdsCsv = payload.employeeIds.map(String).join(",");
+    /**
+     * Format `employee_ids` for form-data:
+     * - Multiple IDs: `"2,5,9"` (comma between employee ids).
+     * - Single numeric id (e.g. emp_id): comma between each digit, e.g. `"9,2,8,0,6,6,3,8,2,2"`.
+     */
+    const formatEmployeeIdsForPayload = (ids: Array<string | number>): string => {
+      const strs = ids.map(String).map((s) => s.trim()).filter(Boolean);
+      if (strs.length === 0) return "";
+      if (strs.length === 1) {
+        const only = strs[0];
+        if (/^\d+$/.test(only) && only.length > 1) {
+          return only.split("").join(",");
+        }
+        return only;
+      }
+      return strs.join(",");
+    };
+
+    const employeeIdsFormatted = formatEmployeeIdsForPayload(payload.employeeIds);
 
     // Backend expects `employee_ids` key.
-    formData.append("employee_ids", employeeIdsCsv);
+    formData.append("employee_ids", employeeIdsFormatted);
     formData.append("action", payload.action ?? "assign");
 
     const response = await api.post(
