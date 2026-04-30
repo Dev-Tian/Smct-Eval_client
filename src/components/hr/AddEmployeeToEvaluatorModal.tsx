@@ -264,8 +264,14 @@ export default function AddEmployeeToEvaluatorModal({
 
     setSaving(true);
     try {
+      // Backend replaces the evaluator’s assignment set with this list — not an “add” merge.
+      // Include everyone already assigned plus the new selections so existing rows stay.
+      const employeeIds = Array.from(
+        new Set([...assignedRows.map((r) => r.id), ...idsToAssign])
+      );
+
       await apiService.assignEmployees(evaluator.id, {
-        employeeIds: idsToAssign,
+        employeeIds,
         action: "assign",
       });
 
@@ -502,7 +508,7 @@ export default function AddEmployeeToEvaluatorModal({
               ) : (
                 <>
                   <Plus className="mr-2 h-4 w-4" />
-                  Add Employee
+                  Assign Employee
                 </>
               )}
             </Button>
