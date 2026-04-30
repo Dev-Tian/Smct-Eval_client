@@ -17,6 +17,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { toastMessages } from "@/lib/toastMessages";
 import { apiService } from "@/lib/apiService";
 import { Eye, RefreshCw, Users2 } from "lucide-react";
+import EvaluationsPagination from "@/components/paginationComponent";
 import AddEmployeeToEvaluatorModal, {
   AssignEvaluatorTarget,
 } from "@/components/hr/AddEmployeeToEvaluatorModal";
@@ -40,6 +41,7 @@ type StaffRow = {
   branch: string;
   role: string;
 };
+const STAFF_MODAL_PER_PAGE = 13;
 
 function getDisplayRole(roles: unknown): string {
   if (!Array.isArray(roles) || roles.length === 0) return "N/A";
@@ -151,6 +153,8 @@ export default function HRSubordinatesPage() {
   const [selectedEvaluator, setSelectedEvaluator] = useState<EvaluatorRow | null>(null);
   const [staffRows, setStaffRows] = useState<StaffRow[]>([]);
   const [loadingStaff, setLoadingStaff] = useState(false);
+  const [staffSearch, setStaffSearch] = useState("");
+  const [staffCurrentPage, setStaffCurrentPage] = useState(1);
   const [isAddEmployeeModalOpen, setIsAddEmployeeModalOpen] = useState(false);
 
   const loadEvaluators = useCallback(async (softRefresh = false) => {
@@ -218,6 +222,8 @@ export default function HRSubordinatesPage() {
   const loadStaffForEvaluator = useCallback(async (evaluator: EvaluatorRow) => {
     setLoadingStaff(true);
     setStaffRows([]);
+    setStaffSearch("");
+    setStaffCurrentPage(1);
     setSelectedEvaluator(evaluator);
     setIsStaffModalOpen(true);
     try {
@@ -250,6 +256,39 @@ export default function HRSubordinatesPage() {
       setLoadingStaff(false);
     }
   }, []);
+
+  const filteredStaffRows = useMemo(() => {
+    const q = staffSearch.trim().toLowerCase();
+    if (!q) return staffRows;
+    return staffRows.filter((row) => {
+      return (
+        row.name.toLowerCase().includes(q) ||
+        row.email.toLowerCase().includes(q) ||
+        row.position.toLowerCase().includes(q) ||
+        row.branch.toLowerCase().includes(q) ||
+        row.role.toLowerCase().includes(q)
+      );
+    });
+  }, [staffRows, staffSearch]);
+
+  const staffTotalPages = Math.max(
+    1,
+    Math.ceil(filteredStaffRows.length / STAFF_MODAL_PER_PAGE)
+  );
+  const paginatedStaffRows = useMemo(() => {
+    const start = (staffCurrentPage - 1) * STAFF_MODAL_PER_PAGE;
+    return filteredStaffRows.slice(start, start + STAFF_MODAL_PER_PAGE);
+  }, [filteredStaffRows, staffCurrentPage]);
+
+  useEffect(() => {
+    setStaffCurrentPage(1);
+  }, [staffSearch]);
+
+  useEffect(() => {
+    if (staffCurrentPage > staffTotalPages) {
+      setStaffCurrentPage(staffTotalPages);
+    }
+  }, [staffCurrentPage, staffTotalPages]);
 
   return (
     <div className="space-y-4">
@@ -383,6 +422,8 @@ export default function HRSubordinatesPage() {
             setIsStaffModalOpen(false);
             setSelectedEvaluator(null);
             setStaffRows([]);
+            setStaffSearch("");
+            setStaffCurrentPage(1);
           }
         }}
       >
@@ -399,6 +440,13 @@ export default function HRSubordinatesPage() {
           </DialogHeader>
 
           <div className="px-6 py-5 bg-slate-50/60">
+          <Input
+            placeholder="Search staff by name, email, position, branch, or role..."
+            value={staffSearch}
+            onChange={(e) => setStaffSearch(e.target.value)}
+            disabled={loadingStaff}
+            className="mb-4 w-full sm:max-w-md"
+          />
           <div className="max-h-[60vh] overflow-auto rounded-xl border border-slate-200/80 bg-white shadow-sm">
             <Table>
               <TableHeader>
@@ -431,14 +479,14 @@ export default function HRSubordinatesPage() {
                       </TableCell>
                     </TableRow>
                   ))
-                ) : staffRows.length === 0 ? (
+                ) : filteredStaffRows.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={5} className="py-10 text-center text-sm text-slate-500">
                       No corresponding staff found.
                     </TableCell>
                   </TableRow>
                 ) : (
-                  staffRows.map((staff) => (
+                  paginatedStaffRows.map((staff) => (
                     <TableRow key={staff.id} className="hover:bg-slate-50/80">
                       <TableCell className="font-medium text-slate-900">{staff.name}</TableCell>
                       <TableCell>{staff.email}</TableCell>
@@ -451,6 +499,15 @@ export default function HRSubordinatesPage() {
               </TableBody>
             </Table>
           </div>
+          {!loadingStaff && filteredStaffRows.length > 0 && (
+            <EvaluationsPagination
+              currentPage={staffCurrentPage}
+              totalPages={staffTotalPages}
+              total={filteredStaffRows.length}
+              perPage={STAFF_MODAL_PER_PAGE}
+              onPageChange={setStaffCurrentPage}
+            />
+          )}
           </div>
 
           <DialogFooter className="border-t bg-white px-6 py-4">
