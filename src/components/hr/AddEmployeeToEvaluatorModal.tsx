@@ -71,9 +71,15 @@ function pickRoleName(rawRoles: unknown): string {
   return String(nonAdmin?.name ?? (rawRoles[0] as { name?: string })?.name ?? "N/A");
 }
 
-function isEmployeeRole(rawRoles: unknown): boolean {
+/** Include employees and evaluators in assignable directory; exclude other roles (e.g. admin-only). */
+function isAssignableStaffRole(rawRoles: unknown): boolean {
   const role = pickRoleName(rawRoles).toLowerCase();
-  return role === "employee";
+  return (
+    role === "employee" ||
+    role === "evaluator" ||
+    role === "evaluation" ||
+    role.includes("evaluator")
+  );
 }
 
 function normalizeCandidate(raw: Record<string, unknown>): CandidateEmployee {
@@ -134,13 +140,13 @@ function sortCandidatesByName(a: CandidateEmployee, b: CandidateEmployee) {
   return a.name.localeCompare(b.name);
 }
 
-function normalizeEmployeeList(list: unknown[]): CandidateEmployee[] {
+function normalizeAssignableStaffList(list: unknown[]): CandidateEmployee[] {
   return list
     .filter(
       (item) =>
         item &&
         typeof item === "object" &&
-        isEmployeeRole((item as Record<string, unknown>).roles)
+        isAssignableStaffRole((item as Record<string, unknown>).roles)
     )
     .map((item) =>
       normalizeCandidate(
@@ -187,7 +193,7 @@ export default function AddEmployeeToEvaluatorModal({
         { page: 1, per_page: 500 }
       );
       const assignedList = extractEmployees(assignedResponse);
-      const normalizedAssigned = normalizeEmployeeList(assignedList);
+      const normalizedAssigned = normalizeAssignableStaffList(assignedList);
       setAssignedRows(normalizedAssigned);
       if (!silent) {
         setLoadingAssigned(false);
@@ -199,9 +205,10 @@ export default function AddEmployeeToEvaluatorModal({
       );
       const unassignedList = extractEmployees(unassignedResponse);
       const assignedIdSet = new Set(normalizedAssigned.map((x) => x.id));
-      const normalizedUnassignedAll = normalizeEmployeeList(unassignedList);
+      const evaluatorIdStr = String(evaluator.id);
+      const normalizedUnassignedAll = normalizeAssignableStaffList(unassignedList);
       const normalizedUnassigned = normalizedUnassignedAll.filter(
-        (x) => !assignedIdSet.has(x.id)
+        (x) => x.id !== evaluatorIdStr && !assignedIdSet.has(x.id)
       );
       setUnassignedRows(normalizedUnassigned);
     } catch (error) {
@@ -244,7 +251,8 @@ export default function AddEmployeeToEvaluatorModal({
       return (
         row.name.toLowerCase().includes(q) ||
         row.email.toLowerCase().includes(q) ||
-        row.position.toLowerCase().includes(q)
+        row.position.toLowerCase().includes(q) ||
+        row.role.toLowerCase().includes(q)
       );
     });
   }, [assignedRows, deferredSearch]);
@@ -256,7 +264,8 @@ export default function AddEmployeeToEvaluatorModal({
       return (
         row.name.toLowerCase().includes(q) ||
         row.email.toLowerCase().includes(q) ||
-        row.position.toLowerCase().includes(q)
+        row.position.toLowerCase().includes(q) ||
+        row.role.toLowerCase().includes(q)
       );
     });
   }, [unassignedRows, deferredSearch]);
@@ -281,8 +290,8 @@ export default function AddEmployeeToEvaluatorModal({
 
     if (idsToAssign.length === 0) {
       toastMessages.generic.warning(
-        "No employee selected",
-        "Select at least one employee to assign."
+        "No one selected",
+        "Select at least one employee or evaluator to assign."
       );
       return;
     }
@@ -301,7 +310,7 @@ export default function AddEmployeeToEvaluatorModal({
       });
 
       setSuccessMessage(
-        `${idsToAssign.length} employee(s) assigned to ${evaluator.name}.`
+        `${idsToAssign.length} team member(s) assigned to ${evaluator.name}.`
       );
       onAssigned?.();
       onOpenChange(false);
@@ -491,7 +500,7 @@ export default function AddEmployeeToEvaluatorModal({
                 aria-hidden
               />
               <Input
-                placeholder="Search by name, email, or position…"
+                placeholder="Search by name, email, position, or role…"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 disabled={saving}
@@ -617,7 +626,7 @@ export default function AddEmployeeToEvaluatorModal({
                         Available to assign
                       </h3>
                       <p className="text-xs text-slate-500">
-                        Staff not on this evaluator&apos;s team — select to add
+                        Employees and evaluators not on this team — select to add
                       </p>
                     </div>
                   </div>
@@ -737,7 +746,8 @@ export default function AddEmployeeToEvaluatorModal({
               ) : (
                 <>
                   <Plus className="mr-2 h-4 w-4" />
-                  Assign Employee                </>
+                  Assign
+                </>
               )}
             </Button>
           </DialogFooter>
