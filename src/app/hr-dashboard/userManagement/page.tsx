@@ -74,6 +74,8 @@ import RankNfileHo from "@/components/evaluation/RankNfileHo";
 import BasicHo from "@/components/evaluation/BasicHo";
 import { getEmployeeBranchCodeDisplay } from "@/components/evaluation/employeeBranchLabel";
 import MemorandumViolationModal from "@/components/MemorandumViolationModal";
+import ViewEvaluationMobileWarningModal from "@/components/evaluation/ViewEvaluationMobileWarningModal";
+import { useMobileViewport } from "@/hooks/useMobileViewport";
 import { cn } from "@/lib/utils";
 
 /** Evaluation ratings use a 0–5 scale (same as the Employee Average chart axes). */
@@ -171,6 +173,7 @@ interface RoleType {
 
 export default function UserManagementTab() {
   const { user } = useAuth();
+  const isMobileViewport = useMobileViewport();
   
   // Hide admin users in HR dashboard (only show in admin dashboard)
   const shouldHideAdminUsers = true; // Set to true for HR dashboard
@@ -368,10 +371,24 @@ export default function UserManagementTab() {
   const [isEvaluationTypeModalOpen, setIsEvaluationTypeModalOpen] =
     useState(false);
   const [isEvaluationModalOpen, setIsEvaluationModalOpen] = useState(false);
+  const [bypassEvaluationMobileWarning, setBypassEvaluationMobileWarning] =
+    useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState<User | null>(null);
   const [evaluationType, setEvaluationType] = useState<
     "employee" | "manager" | "areaManager" | null
   >(null);
+
+  useEffect(() => {
+    if (!isEvaluationModalOpen) {
+      setBypassEvaluationMobileWarning(false);
+    }
+  }, [isEvaluationModalOpen]);
+
+  const closeEvaluationModal = () => {
+    setIsEvaluationModalOpen(false);
+    setSelectedEmployee(null);
+    setEvaluationType(null);
+  };
 
   // Use dialog animation hook (0.4s to match EditUserModal speed)
   const dialogAnimationClass = useDialogAnimation({ duration: 0.4 });
@@ -1552,30 +1569,50 @@ export default function UserManagementTab() {
   const userTableBusy = refresh || isPageLoading;
 
   return (
-    <div className="relative overflow-y-auto pr-2 min-h-[400px]">
+    <div className="relative min-h-[400px] overflow-y-auto pr-0 sm:pr-2">
       <Card>
-        <CardHeader>
-          <CardTitle>User Management</CardTitle>
-          <CardDescription>Manage system users and permissions</CardDescription>
+        <CardHeader className="space-y-1 p-4 sm:p-6">
+          <CardTitle className="text-base sm:text-lg">User Management</CardTitle>
+          <CardDescription className="text-xs leading-relaxed sm:text-sm">
+            Manage system users and permissions
+          </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
           {/* Tab Navigation */}
-          <div className="flex space-x-1 mb-6">
+          <div
+            className="mb-4 flex max-w-full flex-wrap items-center gap-2 sm:mb-6 sm:gap-1.5"
+            role="tablist"
+            aria-label="User management views"
+          >
             <Button
+              type="button"
+              role="tab"
+              aria-selected={tab === "active"}
               variant={tab === "active" ? "default" : "outline"}
               onClick={() => handleTabChange("active")}
-              className="flex items-center gap-2 cursor-pointer"
+              className="h-9 w-auto max-w-full shrink-0 cursor-pointer gap-1.5 px-3 text-sm whitespace-nowrap sm:gap-2"
             >
-              <span>👥</span>
-              Active Users ({activeTotalItems})
+              <span className="shrink-0" aria-hidden>
+                👥
+              </span>
+              <span className="tabular-nums">
+                Active Users ({activeTotalItems})
+              </span>
             </Button>
             <Button
+              type="button"
+              role="tab"
+              aria-selected={tab === "new"}
               variant={tab === "new" ? "default" : "outline"}
               onClick={() => handleTabChange("new")}
-              className="flex items-center gap-2 cursor-pointer"
+              className="h-9 w-auto max-w-full shrink-0 cursor-pointer gap-1.5 px-3 text-sm whitespace-nowrap sm:gap-2"
             >
-              <span>🆕</span>
-              New Registrations ({pendingTotalItems})
+              <span className="shrink-0" aria-hidden>
+                🆕
+              </span>
+              <span className="tabular-nums">
+                New Registrations ({pendingTotalItems})
+              </span>
             </Button>
           </div>
         </CardContent>
@@ -3891,81 +3928,69 @@ export default function UserManagementTab() {
         employee={selectedEmployeeForEvaluation}
       />
 
-      <Dialog
-        open={isEvaluationModalOpen}
-        onOpenChangeAction={(open) => {
-          if (!open) {
-            setIsEvaluationModalOpen(false);
-            setSelectedEmployee(null);
-            setEvaluationType(null);
-          }
-        }}
-      >
-        <DialogContent className="max-w-7xl max-h-[101vh] overflow-hidden p-0 evaluation-container">
-          {selectedEmployeeForEvaluation && evaluationType === "employee" && (
-            <>
-              {/* If employee is HO, use HO evaluation forms (RankNfileHo) */}
-              {/* If employee is NOT HO, use BranchEvaluationForm which routes correctly */}
-              {isEmployeeHO(selectedEmployeeForEvaluation) ? (
-                <RankNfileHo
-                  employee={selectedEmployeeForEvaluation}
-                  onCloseAction={() => {
-                    setIsEvaluationModalOpen(false);
-                    setSelectedEmployee(null);
-                    setEvaluationType(null);
-                  }}
-                />
-              ) : (
-                <BranchEvaluationForm
-                  employee={selectedEmployeeForEvaluation}
-                  onCloseAction={() => {
-                    setIsEvaluationModalOpen(false);
-                    setSelectedEmployee(null);
-                    setEvaluationType(null);
-                  }}
-                  evaluationType="rankNfile"
-                />
-              )}
-            </>
-          )}
-          {selectedEmployeeForEvaluation && evaluationType === "manager" && (
-            <>
-              {/* If employee is HO, use HO evaluation forms (BasicHo) */}
-              {/* If employee is NOT HO (Branch), use BranchManagerEvaluationForm directly */}
-              {isEmployeeHO(selectedEmployeeForEvaluation) ? (
-                <BasicHo
-                  employee={selectedEmployeeForEvaluation}
-                  onCloseAction={() => {
-                    setIsEvaluationModalOpen(false);
-                    setSelectedEmployee(null);
-                    setEvaluationType(null);
-                  }}
-                />
-              ) : (
-                <BranchManagerEvaluationForm
-                  employee={selectedEmployeeForEvaluation}
-                  onCloseAction={() => {
-                    setIsEvaluationModalOpen(false);
-                    setSelectedEmployee(null);
-                    setEvaluationType(null);
-                  }}
-                  evaluationType="basic"
-                />
-              )}
-            </>
-          )}
-          {selectedEmployeeForEvaluation && evaluationType === "areaManager" && (
-            <AreaManagerEvaluationForm
-              employee={selectedEmployeeForEvaluation}
-              onCloseAction={() => {
-                setIsEvaluationModalOpen(false);
-                setSelectedEmployee(null);
-                setEvaluationType(null);
-              }}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
+      {isEvaluationModalOpen &&
+      isMobileViewport &&
+      !bypassEvaluationMobileWarning ? (
+        <ViewEvaluationMobileWarningModal
+          isOpen={isEvaluationModalOpen}
+          onCloseAction={closeEvaluationModal}
+          onViewAnywayAction={() => setBypassEvaluationMobileWarning(true)}
+        />
+      ) : (
+        <Dialog
+          open={isEvaluationModalOpen}
+          onOpenChangeAction={(open) => {
+            if (!open) {
+              closeEvaluationModal();
+            }
+          }}
+        >
+          <DialogContent className="max-w-7xl max-h-[101vh] overflow-hidden p-0 evaluation-container">
+            {selectedEmployeeForEvaluation && evaluationType === "employee" && (
+              <>
+                {/* If employee is HO, use HO evaluation forms (RankNfileHo) */}
+                {/* If employee is NOT HO, use BranchEvaluationForm which routes correctly */}
+                {isEmployeeHO(selectedEmployeeForEvaluation) ? (
+                  <RankNfileHo
+                    employee={selectedEmployeeForEvaluation}
+                    onCloseAction={closeEvaluationModal}
+                  />
+                ) : (
+                  <BranchEvaluationForm
+                    employee={selectedEmployeeForEvaluation}
+                    onCloseAction={closeEvaluationModal}
+                    evaluationType="rankNfile"
+                  />
+                )}
+              </>
+            )}
+            {selectedEmployeeForEvaluation && evaluationType === "manager" && (
+              <>
+                {/* If employee is HO, use HO evaluation forms (BasicHo) */}
+                {/* If employee is NOT HO (Branch), use BranchManagerEvaluationForm directly */}
+                {isEmployeeHO(selectedEmployeeForEvaluation) ? (
+                  <BasicHo
+                    employee={selectedEmployeeForEvaluation}
+                    onCloseAction={closeEvaluationModal}
+                  />
+                ) : (
+                  <BranchManagerEvaluationForm
+                    employee={selectedEmployeeForEvaluation}
+                    onCloseAction={closeEvaluationModal}
+                    evaluationType="basic"
+                  />
+                )}
+              </>
+            )}
+            {selectedEmployeeForEvaluation && evaluationType === "areaManager" && (
+              <AreaManagerEvaluationForm
+                employee={selectedEmployeeForEvaluation}
+                onCloseAction={closeEvaluationModal}
+              />
+            )}
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }
