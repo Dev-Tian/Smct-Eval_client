@@ -50,6 +50,16 @@ import ViewResultsModal from "@/components/evaluation/ViewResultsModal";
 import { useDialogAnimation } from "@/hooks/useDialogAnimation";
 import { toastMessages } from "@/lib/toastMessages";
 import { cn } from "@/lib/utils";
+import {
+  EvalRecordSignBadge,
+  hasEmployeeSigned,
+  hasEvaluatorSigned,
+  hasHrSigned,
+  shouldShowEmployeeSignPending,
+  shouldShowEvaluatorSignPending,
+  shouldShowHrSignPending,
+} from "@/components/evaluation/evaluationRecordsShared";
+
 interface Review {
   id: number;
   employee: any;
@@ -1428,42 +1438,22 @@ export default function OverviewTab() {
                             </Badge>
                           </TableCell>
                           <TableCell className="hidden text-gray-600 lg:table-cell">
-                            {review.status === "completed" ? (
-                              <Badge className="bg-green-100 text-[0.65rem] text-green-800 sm:text-xs">
-                                ✓ Signed
-                              </Badge>
-                            ) : review.status === "pending" ? (
-                              <Badge className="bg-gray-100 text-[0.65rem] text-gray-600 sm:text-xs">
-                                ⏳ Pending
-                              </Badge>
-                            ) : (
-                              <span className="text-[0.65rem] text-gray-400 sm:text-xs">
-                                —
-                              </span>
-                            )}
+                            <EvalRecordSignBadge
+                              signed={hasEmployeeSigned(review)}
+                              pending={shouldShowEmployeeSignPending(review)}
+                            />
                           </TableCell>
                           <TableCell className="hidden text-gray-600 xl:table-cell">
-                            {review.evaluator?.roles?.[0]?.name ===
-                            "evaluator" ? (
-                              <Badge className="bg-green-100 text-[0.65rem] text-green-800 sm:text-xs">
-                                ✓ Signed
-                              </Badge>
-                            ) : (
-                              <span className="text-[0.65rem] text-gray-400 sm:text-xs">
-                                —
-                              </span>
-                            )}
+                            <EvalRecordSignBadge
+                              signed={hasEvaluatorSigned(review)}
+                              pending={shouldShowEvaluatorSignPending(review)}
+                            />
                           </TableCell>
                           <TableCell className="hidden text-gray-600 xl:table-cell">
-                            {review.evaluator?.roles?.[0]?.name === "hr" ? (
-                              <Badge className="bg-green-100 text-[0.65rem] text-green-800 sm:text-xs">
-                                ✓ Signed
-                              </Badge>
-                            ) : (
-                              <span className="text-[0.65rem] text-gray-400 sm:text-xs">
-                                —
-                              </span>
-                            )}
+                            <EvalRecordSignBadge
+                              signed={hasHrSigned(review)}
+                              pending={shouldShowHrSignPending(review)}
+                            />
                           </TableCell>
 
                           <TableCell className={evalTableActionsCellClass(rowClassName)}>
