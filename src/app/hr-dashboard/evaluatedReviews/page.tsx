@@ -4,7 +4,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import clientDataService, { apiService } from "@/lib/apiService";
 import EvaluationsPagination from "@/components/paginationComponent";
 import { useState, useEffect, useRef, useMemo } from "react";
-import { ChevronDown, Eye, Loader2, Search, Trash2 } from "lucide-react";
+import { ChevronDown, Loader2, Search } from "lucide-react";
 
 import {
   Card,
@@ -60,9 +60,11 @@ import {
   shouldShowHrSignPending,
   getReviewQuarterBadgeClass,
   getReviewQuarterDisplay,
+  EvalRecordRowActions,
+  EvalRecordTableRow,
+  type EvaluationRecordReview,
   getReviewRowClassName,
   QUARTER_LATE_LEGEND_LABEL,
-  QUARTER_LATE_TOOLTIP,
 } from "@/components/evaluation/evaluationRecordsShared";
 
 interface Review {
@@ -149,12 +151,12 @@ function evalTableActionsCellClass(rowClassName: string) {
     "w-[3.25rem] min-w-[3.25rem] max-w-[3.25rem] p-1 sm:w-auto sm:min-w-[4.5rem] sm:max-w-none sm:p-2",
     "lg:sticky lg:right-0 lg:z-[3] lg:min-w-[7rem] lg:w-auto lg:shadow-[-6px_0_12px_-4px_rgba(15,23,42,0.12)]",
     rowClassName.includes("bg-green-50") && "lg:bg-green-50",
-    rowClassName.includes("bg-red-50") && "lg:bg-red-50",
+    rowClassName.includes("bg-red-200") && "lg:bg-red-200",
     rowClassName.includes("bg-yellow-50") && "lg:bg-yellow-50",
     rowClassName.includes("bg-blue-50") && "lg:bg-blue-50",
     rowClassName.includes("bg-orange-50") && "lg:bg-orange-50",
     !rowClassName.includes("bg-green-50") &&
-      !rowClassName.includes("bg-red-50") &&
+      !rowClassName.includes("bg-red-200") &&
       !rowClassName.includes("bg-yellow-50") &&
       !rowClassName.includes("bg-blue-50") &&
       !rowClassName.includes("bg-orange-50") &&
@@ -165,48 +167,6 @@ function evalTableActionsCellClass(rowClassName: string) {
 const EVAL_TABLE_ACTIONS_HEAD_CLASS = cn(
   "w-[3.25rem] min-w-[3.25rem] p-1 text-center sm:min-w-[4.5rem] sm:p-2 lg:sticky lg:right-0 lg:z-[4] lg:min-w-[7rem] lg:bg-white lg:text-left lg:shadow-[-6px_0_12px_-4px_rgba(15,23,42,0.12)]"
 );
-
-function EvalRecordRowActions({
-  review,
-  onView,
-  onDelete,
-}: {
-  review: Review;
-  onView: () => void;
-  onDelete: () => void;
-}) {
-  const canDelete = isReviewDeletable(review);
-
-  return (
-    <div className="flex flex-col items-center justify-center gap-1 sm:flex-row sm:justify-end lg:flex-wrap lg:justify-start lg:gap-1.5">
-      <Button
-        type="button"
-        variant="outline"
-        size="icon"
-        onClick={onView}
-        aria-label="View evaluation"
-        className="h-8 w-8 shrink-0 cursor-pointer border-blue-700 bg-blue-600 text-white hover:bg-blue-700 hover:text-white lg:h-8 lg:w-auto lg:px-2 lg:transition-all lg:duration-200 lg:hover:-translate-y-0.5 lg:hover:shadow-md lg:active:translate-y-0"
-      >
-        <Eye className="h-4 w-4 lg:hidden" />
-        <span className="hidden lg:inline">☰ View</span>
-      </Button>
-      {canDelete ? (
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          onClick={onDelete}
-          aria-label="Delete evaluation"
-          title="Delete this evaluation record"
-          className="h-8 w-8 shrink-0 cursor-pointer border-red-200 bg-red-100 text-red-700 hover:bg-red-500 hover:text-white lg:h-8 lg:w-auto lg:px-2 lg:transition-all lg:duration-200 lg:hover:-translate-y-0.5 lg:hover:shadow-md lg:active:translate-y-0"
-        >
-          <Trash2 className="h-4 w-4 lg:hidden" />
-          <span className="hidden lg:inline">❌ Delete</span>
-        </Button>
-      ) : null}
-    </div>
-  );
-}
 
 function formatReviewListDate(createdAt: string): { short: string; full: string } {
   const d = new Date(createdAt);
@@ -1140,8 +1100,8 @@ export default function OverviewTab() {
                 </Badge>
               </div>
               <div className="flex items-center gap-1">
-                <div className="h-2 w-2 rounded border-l-2 border-l-red-500 bg-red-50" />
-                <Badge className="bg-red-100 text-red-800 text-xs ring-1 ring-red-300/80">
+                <div className="h-2 w-2 rounded border-l-2 border-l-red-600 bg-red-200" />
+                <Badge className="border border-red-500 bg-red-500 text-xs text-white">
                   {QUARTER_LATE_LEGEND_LABEL}
                 </Badge>
               </div>
@@ -1333,7 +1293,13 @@ export default function OverviewTab() {
                       const statusLabels = formatReviewStatusLabel(review.status);
 
                       return (
-                        <TableRow key={review.id} className={rowClassName}>
+                        <EvalRecordTableRow
+                          key={review.id}
+                          review={
+                            review as Parameters<typeof getReviewRowClassName>[0]
+                          }
+                          className={rowClassName}
+                        >
                           <TableCell>
                             <span className="block max-w-[9rem] truncate font-medium text-gray-900 sm:max-w-[11rem] lg:max-w-none">
                               {[review.employee?.fname, review.employee?.lname]
@@ -1364,11 +1330,6 @@ export default function OverviewTab() {
                                     "max-w-[5.5rem] truncate text-[0.65rem] sm:max-w-none sm:text-xs",
                                     getReviewQuarterBadgeClass(review)
                                   )}
-                                  title={
-                                    /Q[1-4]/i.test(displayValue)
-                                      ? `Late: submitted after the input month (whole month after the quarter). ${QUARTER_LATE_TOOLTIP}`
-                                      : undefined
-                                  }
                                 >
                                   {displayValue}
                                 </Badge>
@@ -1432,12 +1393,12 @@ export default function OverviewTab() {
 
                           <TableCell className={evalTableActionsCellClass(rowClassName)}>
                             <EvalRecordRowActions
-                              review={review}
-                              onView={() => handleViewEvaluation(review)}
-                              onDelete={() => openDeleteModal(review)}
+                              review={review as EvaluationRecordReview}
+                              onViewAction={() => handleViewEvaluation(review)}
+                              onDeleteAction={() => openDeleteModal(review)}
                             />
                           </TableCell>
-                        </TableRow>
+                        </EvalRecordTableRow>
                       );
                     })
                   )}

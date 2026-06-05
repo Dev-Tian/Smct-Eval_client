@@ -1,8 +1,16 @@
 "use client";
 
+import {
+  Children,
+  cloneElement,
+  isValidElement,
+  type ComponentProps,
+  type ReactElement,
+} from "react";
 import { Eye, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { TableCell, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import {
   isQuarterLateByStaticPeriod,
@@ -61,12 +69,12 @@ export function evalTableActionsCellClass(rowClassName: string) {
     "w-[3.25rem] min-w-[3.25rem] max-w-[3.25rem] p-1 sm:w-auto sm:min-w-[4.5rem] sm:max-w-none sm:p-2",
     "lg:sticky lg:right-0 lg:z-[3] lg:min-w-[7rem] lg:w-auto lg:shadow-[-6px_0_12px_-4px_rgba(15,23,42,0.12)]",
     rowClassName.includes("bg-green-50") && "lg:bg-green-50",
-    rowClassName.includes("bg-red-50") && "lg:bg-red-50",
+    rowClassName.includes("bg-red-200") && "lg:bg-red-200",
     rowClassName.includes("bg-yellow-50") && "lg:bg-yellow-50",
     rowClassName.includes("bg-blue-50") && "lg:bg-blue-50",
     rowClassName.includes("bg-orange-50") && "lg:bg-orange-50",
     !rowClassName.includes("bg-green-50") &&
-      !rowClassName.includes("bg-red-50") &&
+      !rowClassName.includes("bg-red-200") &&
       !rowClassName.includes("bg-yellow-50") &&
       !rowClassName.includes("bg-blue-50") &&
       !rowClassName.includes("bg-orange-50") &&
@@ -426,9 +434,10 @@ export function getQuarterColor(quarter: string): string {
 }
 
 export const QUARTER_LATE_BADGE_CLASS =
-  "bg-red-100 text-red-800 ring-1 ring-red-300/80";
+  "border border-red-500 bg-red-500 text-white shadow-sm ring-1 ring-red-600/40";
 
-export const QUARTER_LATE_LEGEND_LABEL = "Late (past input month)";
+export const QUARTER_LATE_LEGEND_LABEL = "Late Submission";
+export const QUARTER_LATE_HOVER_LABEL = "Late submit";
 export const QUARTER_LATE_TOOLTIP = QUARTER_EVALUATION_SCHEDULE_HINT;
 
 export function isReviewQuarterLate(review: EvaluationRecordReview): boolean {
@@ -442,7 +451,7 @@ export function isReviewQuarterLate(review: EvaluationRecordReview): boolean {
 
 /** Row accent when quarter was submitted after the input month (distinct from yellow “New”). */
 export const QUARTER_LATE_ROW_CLASS =
-  "bg-red-50/90 hover:bg-red-100/90 border-l-4 border-l-red-500";
+  "bg-red-200 hover:!bg-red-300 border-l-4 border-l-red-600 ring-1 ring-inset ring-red-400/60 cursor-help";
 
 export function getReviewQuarterBadgeClass(
   review: EvaluationRecordReview
@@ -519,15 +528,57 @@ export function getReviewRowClassName(review: EvaluationRecordReview): string {
   return "hover:bg-gray-100 transition-colors";
 }
 
+type EvalRecordTableRowProps = ComponentProps<typeof TableRow> & {
+  review: EvaluationRecordReview;
+};
+
+/**
+ * Table row for evaluation records. Late rows show a native `title` on each cell
+ * (browsers ignore `title` on `<tr>`; Radix Tooltip around `<tr>` breaks table markup).
+ */
+export function EvalRecordTableRow({
+  review,
+  className,
+  children,
+  title,
+  ...props
+}: EvalRecordTableRowProps) {
+  const late = isReviewQuarterLate(review);
+  const lateTooltip = late ? (title ?? QUARTER_LATE_HOVER_LABEL) : undefined;
+
+  const rowChildren =
+    lateTooltip != null
+      ? Children.map(children, (child) => {
+          if (
+            !isValidElement<ComponentProps<typeof TableCell>>(
+              child as ReactElement
+            )
+          ) {
+            return child;
+          }
+          const cell = child as ReactElement<ComponentProps<typeof TableCell>>;
+          return cloneElement(cell, {
+            title: cell.props.title ?? lateTooltip,
+          });
+        })
+      : children;
+
+  return (
+    <TableRow className={className} {...props}>
+      {rowChildren}
+    </TableRow>
+  );
+}
+
 export function EvalRecordRowActions({
   review,
-  onView,
-  onDelete,
+  onViewAction,
+  onDeleteAction,
   deleting,
 }: {
   review: EvaluationRecordReview;
-  onView: () => void;
-  onDelete: () => void;
+  onViewAction: () => void;
+  onDeleteAction: () => void;
   deleting?: boolean;
 }) {
   const canDelete = isReviewDeletable(review);
@@ -538,7 +589,7 @@ export function EvalRecordRowActions({
         type="button"
         variant="outline"
         size="icon"
-        onClick={onView}
+        onClick={onViewAction}
         aria-label="View evaluation"
         className="h-8 w-8 shrink-0 cursor-pointer border-blue-700 bg-blue-600 text-white hover:bg-blue-700 hover:text-white lg:h-8 lg:w-auto lg:px-2 lg:transition-all lg:duration-200 lg:hover:-translate-y-0.5 lg:hover:shadow-md lg:active:translate-y-0"
       >
@@ -550,7 +601,7 @@ export function EvalRecordRowActions({
           type="button"
           variant="outline"
           size="icon"
-          onClick={onDelete}
+          onClick={onDeleteAction}
           disabled={deleting}
           aria-label="Delete evaluation"
           title="Delete this evaluation record"
