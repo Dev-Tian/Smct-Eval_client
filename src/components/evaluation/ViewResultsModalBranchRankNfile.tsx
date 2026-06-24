@@ -76,8 +76,9 @@ const getRatingLabel = (score: number) => {
 
 const calculateScore = (scores: string[]) => {
   const validScores = scores
-    .filter((score) => score && score !== "")
-    .map((score) => parseFloat(score));
+    .map(Number)
+    .filter((score) => score > 0);
+
   if (validScores.length === 0) return 0;
   return (
     validScores.reduce((sum, score) => sum + score, 0) / validScores.length
@@ -1520,8 +1521,8 @@ export default function ViewResultsModal({
         setIsApproving(false);
       }, 1500);
     } catch (error) {
-      console.error("❌ Error approving evaluation:", error);
-      setApprovalError("Failed to approve evaluation. Please try again.");
+      console.error("❌ Error signing evaluation:", error);
+      setApprovalError("Failed to sign evaluation. Please try again.");
       setShowApprovalDialog(false);
       setShowSuccessAnimation(false);
       setIsApproving(false);
@@ -3948,7 +3949,7 @@ export default function ViewResultsModal({
                                         Approving...
                                       </>
                                     ) : (
-                                      "✓ Approve Evaluation"
+                                      "✓ Sign Evaluation"
                                     )}
                                   </Button>
                                 </div>

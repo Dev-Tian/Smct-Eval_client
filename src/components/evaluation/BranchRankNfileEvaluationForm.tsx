@@ -26,8 +26,13 @@ import { createEvaluationNotification } from "@/lib/notificationUtils";
 import { User, useAuth } from "../../contexts/UserContext";
 import { useBranchesForEvaluation } from "@/hooks/useBranchesForEvaluation";
 import { branchRankNfileSteps } from "./configs/branchRankNfileConfig";
+import {
+  EvaluationFormEditOptions,
+  useApplyInitialFormData,
+} from "./evaluationFormEdit";
+import { submitEvaluationWithOptionalEdit } from "@/lib/evaluationEditSubmit";
 
-interface BranchRankNfileEvaluationFormProps {
+interface BranchRankNfileEvaluationFormProps extends EvaluationFormEditOptions {
   employee?: User | null;
   onCloseAction?: () => void;
   onCancelAction?: () => void;
@@ -37,6 +42,8 @@ export default function BranchRankNfileEvaluationForm({
   employee,
   onCloseAction,
   onCancelAction,
+  editSubmissionId,
+  initialFormData,
 }: BranchRankNfileEvaluationFormProps) {
   const [currentStep, setCurrentStep] = useState(0); // 0 = welcome step, 1-N = actual steps
   const [welcomeAnimationKey, setWelcomeAnimationKey] = useState(0);
@@ -136,6 +143,8 @@ export default function BranchRankNfileEvaluationForm({
     managerialSkillsExplanation6: "",
     created_at: "",
   });
+
+  useApplyInitialFormData(setForm, editSubmissionId, initialFormData);
 
   const updateDataAction = useCallback((updates: Partial<EvaluationPayload>) => {
     setForm((prev: EvaluationPayload) => ({
@@ -246,17 +255,14 @@ export default function BranchRankNfileEvaluationForm({
           form.qualityOfWorkScore4 !== 0
         );
         
-        // qualityOfWorkScore5 (Job Targets row) is REQUIRED for BranchRankNfile
-        const hasQualityOfWorkScore5 = form.qualityOfWorkScore5 && form.qualityOfWorkScore5 !== 0;
-        
+  
         const hasQualityOfWorkComments =
           !!form.qualityOfWorkComments1?.trim() &&
           !!form.qualityOfWorkComments2?.trim() &&
           !!form.qualityOfWorkComments3?.trim() &&
-          !!form.qualityOfWorkComments4?.trim() &&
-          !!form.qualityOfWorkComments5?.trim();
+          !!form.qualityOfWorkComments4?.trim();
 
-        return hasBaseScores && hasQualityOfWorkScore5 && hasQualityOfWorkComments;
+        return hasBaseScores && hasQualityOfWorkComments;
       case 3: // Adaptability
         return (
           form.adaptabilityScore1 &&
@@ -383,15 +389,11 @@ export default function BranchRankNfileEvaluationForm({
         if (!form.qualityOfWorkScore1 || form.qualityOfWorkScore1 === 0) {
           return "Please complete all Quality of Work scores";
         }
-        if (!form.qualityOfWorkScore5 || form.qualityOfWorkScore5 === 0) {
-          return "Please complete the Job Targets score";
-        }
         if (
           !form.qualityOfWorkComments1?.trim() ||
           !form.qualityOfWorkComments2?.trim() ||
           !form.qualityOfWorkComments3?.trim() ||
-          !form.qualityOfWorkComments4?.trim() ||
-          !form.qualityOfWorkComments5?.trim()
+          !form.qualityOfWorkComments4?.trim() 
         ) {
           return "Please provide comments for all Quality of Work items";
         }
@@ -461,10 +463,12 @@ export default function BranchRankNfileEvaluationForm({
         const evaluatorId = typeof user?.id === 'string' ? parseInt(user.id, 10) : (user?.id || 0);
         
         // BranchRankNfile always uses postBranchRankNFile endpoint
-        await apiService.postBranchRankNFile(employeeId, form);
+        await submitEvaluationWithOptionalEdit(editSubmissionId, form, async () => {
+          await apiService.postBranchRankNFile(employeeId, form);
+        });
         
         // Store in localStorage as backup
-        if (employee) {
+        if (!editSubmissionId && employee) {
           await storeEvaluationResult({
             employeeId: employeeId,
             employeeEmail: employee.email || "",

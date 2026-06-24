@@ -27,11 +27,16 @@ import { User, useAuth } from "../../contexts/UserContext";
 import { branchEvaluationSteps, branchRankNfileSteps } from "./configs";
 import { isEmployeeHeadOffice } from "./employeeBranchLabel";
 import { useBranchesForEvaluation } from "@/hooks/useBranchesForEvaluation";
+import {
+  EvaluationFormEditOptions,
+  useApplyInitialFormData,
+} from "./evaluationFormEdit";
+import { submitEvaluationWithOptionalEdit } from "@/lib/evaluationEditSubmit";
 
 // Default steps use branch evaluation configuration
 const defaultSteps: EvaluationStepConfig[] = branchEvaluationSteps;
 
-interface EvaluationFormProps {
+interface EvaluationFormProps extends EvaluationFormEditOptions {
   employee?: User | null;
   onCloseAction?: () => void;
   onCancelAction?: () => void;
@@ -43,6 +48,8 @@ export default function EvaluationForm({
   employee,
   onCloseAction,
   onCancelAction,
+  editSubmissionId,
+  initialFormData,
   steps: customSteps,
   evaluationType = 'default',
 }: EvaluationFormProps) {
@@ -286,6 +293,8 @@ export default function EvaluationForm({
   });
   const [isCancelling, setIsCancelling] = useState(false);
 
+  useApplyInitialFormData(setForm, editSubmissionId, initialFormData);
+
   const updateDataAction = (updates: Partial<EvaluationPayload>) => {
     setForm((prev: EvaluationPayload) => ({
       ...prev,
@@ -458,12 +467,12 @@ export default function EvaluationForm({
         // 3. OR for BranchRankNfile (employee NOT HO, rankNfile type) - REQUIRED (uses Step2 which shows qualityOfWorkScore5)
         // 4. OR for any non-HO employee not using the 7 detailed job targets - REQUIRED
         // For HO employees (rankNfile or basic evaluationType), qualityOfWorkScore5 is NOT required
-        const hasQualityOfWorkScore5 = isHO || showJobTargets || (form.qualityOfWorkScore5 && form.qualityOfWorkScore5 !== 0);
+        // const hasQualityOfWorkScore5 = isHO || showJobTargets || (form.qualityOfWorkScore5 && form.qualityOfWorkScore5 !== 0);
         
         // For BranchRankNfile specifically, ensure qualityOfWorkScore5 is filled
-        if (isBranchRankNfile && (!form.qualityOfWorkScore5 || form.qualityOfWorkScore5 === 0)) {
-          return false; // Explicitly require qualityOfWorkScore5 for BranchRankNfile
-        }
+        // if (isBranchRankNfile && (!form.qualityOfWorkScore5 || form.qualityOfWorkScore5 === 0)) {
+        //   return false; // Explicitly require qualityOfWorkScore5 for BranchRankNfile
+        // }
 
         // Comments requirement
         // - Always require base comments (rows 1-4)
@@ -474,12 +483,12 @@ export default function EvaluationForm({
           !!form.qualityOfWorkComments3?.trim() &&
           !!form.qualityOfWorkComments4?.trim();
 
-        const requiresQualityOfWorkRow5 = !isHO && !showJobTargets;
-        const hasRow5Comment = !requiresQualityOfWorkRow5 || !!form.qualityOfWorkComments5?.trim();
+        // const requiresQualityOfWorkRow5 = !isHO && !showJobTargets;
+        //const hasRow5Comment = !requiresQualityOfWorkRow5 || !!form.qualityOfWorkComments5?.trim();
         
         // Only require base scores and qualityOfWorkScore5 (if applicable)
         // Job targets are optional
-        return hasBaseScores && hasQualityOfWorkScore5 && hasBaseComments && hasRow5Comment;
+        return hasBaseScores && hasBaseComments;
       case 3: // Adaptability
         return (
           form.adaptabilityScore1 &&
@@ -753,14 +762,14 @@ export default function EvaluationForm({
         ) {
           return "Please provide comments for all Quality of Work items";
         }
-        // If the single Job Targets row is used (Step2.tsx), require its comment too
-        if (
-          form.qualityOfWorkScore5 &&
-          form.qualityOfWorkScore5 !== 0 &&
-          (!form.qualityOfWorkComments5 || form.qualityOfWorkComments5.trim() === "")
-        ) {
-          return "Please provide a comment for Job Targets";
-        }
+        // // If the single Job Targets row is used (Step2.tsx), require its comment too
+        //  if (
+        //   form.qualityOfWorkScore5 &&
+        //   form.qualityOfWorkScore5 !== 0 &&
+        //   (!form.qualityOfWorkComments5 || form.qualityOfWorkComments5.trim() === "")
+        // ) {
+        //   return "Please provide a comment for Job Targets";
+        // }
         return "Please complete all required fields";
       case 3: // Adaptability
         return "Please complete all Adaptability scores and comments";
@@ -831,23 +840,25 @@ export default function EvaluationForm({
           console.warn('⚠️ Frontend: qualityOfWorkScore12 is missing or zero');
         }
 
-        if (isHO) {
-          if (evaluationType === 'rankNfile') {
-            await apiService.postHoRankNFile(empID, form);
-          } else if (evaluationType === 'basic') {
-            await apiService.postHoBasic(empID, form);
+        await submitEvaluationWithOptionalEdit(editSubmissionId, form, async () => {
+          if (isHO) {
+            if (evaluationType === 'rankNfile') {
+              await apiService.postHoRankNFile(empID, form);
+            } else if (evaluationType === 'basic') {
+              await apiService.postHoBasic(empID, form);
+            } else {
+              await apiService.createSubmission(empID, form);
+            }
           } else {
-            await apiService.createSubmission(empID, form);
+            if (evaluationType === 'rankNfile') {
+              await apiService.postBranchRankNFile(empID, form);
+            } else if (evaluationType === 'basic') {
+              await apiService.postBranchBasic(empID, form);
+            } else {
+              await apiService.postBranchBasic(empID, form);
+            }
           }
-        } else {
-          if (evaluationType === 'rankNfile') {
-            await apiService.postBranchRankNFile(empID, form);
-          } else if (evaluationType === 'basic') {
-            await apiService.postBranchBasic(empID, form);
-          } else {
-            await apiService.postBranchBasic(empID, form);
-          }
-        }
+        });
       }
       setShowSuccessDialog(true);
     } catch (clientError) {
