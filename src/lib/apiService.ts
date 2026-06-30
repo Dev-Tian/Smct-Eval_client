@@ -7,13 +7,12 @@ const USER_LIST_SORT_PARAMS = {
   direction: "asc",
 } as const;
 import { EvaluationPayload } from "../components/evaluation/types";
+import type { EvaluationResubmitType } from "@/lib/evaluationEditTypes";
+import type { EvaluationSubmissionRecord } from "@/lib/evaluationSubmissionRecord";
+import { asEvaluationSubmissionRecord } from "@/lib/evaluationSubmissionRecord";
+import { normalizeMyEvalAsEmployeeResponse } from "@/lib/employeeEvalListResponse";
 
-export type ResubmitEvaluationType =
-  | "rankNfile"
-  | "basic"
-  | "branchRankNfile"
-  | "branchBasic"
-  | "branchBasicAreaManager";
+export type ResubmitEvaluationType = EvaluationResubmitType;
 
 function isAxiosNotFound(error: unknown): boolean {
   return (
@@ -301,10 +300,12 @@ export const apiService = {
     return response.data.evaluations;
   },
 
-  getSubmissionById: async (id: number | string): Promise<any | null> => {
+  getSubmissionById: async (
+    id: number | string
+  ): Promise<EvaluationSubmissionRecord | null> => {
     try {
       const response = await api.get(`/submissions/${id}`);
-      return response.data.user_eval ?? null;
+      return asEvaluationSubmissionRecord(response.data.user_eval);
     } catch (error) {
       // 404 is expected when a list row points at a deleted/missing evaluation.
       // Return null so callers show the dialog without Next.js surfacing an Axios throw.
@@ -657,6 +658,14 @@ export const apiService = {
     return response.data;
   },
 
+  /** Evaluators in the same branch as the given user (approval flow approver list). */
+  getEvaluatorsByBranch: async (userId: string | number): Promise<any> => {
+    const response = await api.get(
+      `/getEvaluatorsByBranch/${encodeURIComponent(String(userId))}`
+    );
+    return response.data;
+  },
+
   getAllEvaluatorAssignedEmployees: async (
     userId: string | number,
     params?: {
@@ -728,56 +737,6 @@ export const apiService = {
     const response = await api.post(
       `/assignEmployees/${encodeURIComponent(String(userId))}`,
       new FormData()
-    );
-    return response.data;
-  },
-
-  /**
-   * Mark assigned employees as direct subordinates of an evaluator.
-   * Backend: POST /setAsDirect/{evaluator} with { employee_ids: number[] }
-   */
-  setAsDirect: async (
-    evaluatorId: string | number,
-    employeeIds: Array<string | number>
-  ): Promise<any> => {
-    return apiService.setEvaluatorEmployeeDirectStatus(
-      evaluatorId,
-      employeeIds,
-      true
-    );
-  },
-
-  /**
-   * Mark assigned employees as indirect subordinates of an evaluator.
-   * Backend: POST /setAsInDirect/{evaluator} with { employee_ids: number[] }
-   */
-  setAsInDirect: async (
-    evaluatorId: string | number,
-    employeeIds: Array<string | number>
-  ): Promise<any> => {
-    return apiService.setEvaluatorEmployeeDirectStatus(
-      evaluatorId,
-      employeeIds,
-      false
-    );
-  },
-
-  /**
-   * Unified direct / indirect subordinate status update for an evaluator.
-   */
-  setEvaluatorEmployeeDirectStatus: async (
-    evaluatorId: string | number,
-    employeeIds: Array<string | number>,
-    isDirect: boolean
-  ): Promise<any> => {
-    const endpoint = isDirect ? "setAsDirect" : "setAsInDirect";
-    const ids = employeeIds
-      .map((id) => Number(id))
-      .filter((id) => Number.isFinite(id) && id > 0);
-
-    const response = await api.post(
-      `/${endpoint}/${encodeURIComponent(String(evaluatorId))}`,
-      { employee_ids: ids }
     );
     return response.data;
   },
@@ -870,7 +829,7 @@ export const apiService = {
    */
   resubmitEvaluation: async (
     submissionId: number | string,
-    submission: EvaluationPayload,
+    submission: EvaluationPayload | Record<string, unknown>,
     evaluationType: ResubmitEvaluationType
   ): Promise<any> => {
     const endpointByType: Record<ResubmitEvaluationType, string> = {
@@ -884,7 +843,13 @@ export const apiService = {
     const endpoint = endpointByType[evaluationType];
     const response = await api.post(
       `/${endpoint}/resubmit/${submissionId}`,
-      submission
+      submission,
+      {
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+      }
     );
     return response.data;
   },
@@ -946,16 +911,20 @@ export const apiService = {
     selectedYear?: string,
     selectedQuarter?: string
   ): Promise<any> => {
-    const response = await api.get("/getMyEvalAuthEmployee", {
-      params: {
-        search: search || "",
-        page: page || 1,
-        per_page: per_page || 10,
-        year: selectedYear,
-        quarter: selectedQuarter,
-      },
-    });
-    return response.data;
+    const params: Record<string, string | number> = {
+      search: search || "",
+      page: page || 1,
+      per_page: per_page || 10,
+    };
+    if (selectedYear) {
+      params.year = selectedYear;
+    }
+    if (selectedQuarter) {
+      params.quarter = selectedQuarter;
+    }
+
+    const response = await api.get("/getMyEvalAuthEmployee", { params });
+    return normalizeMyEvalAsEmployeeResponse(response.data);
   },
 
   // Evaluator dashboard total cards
