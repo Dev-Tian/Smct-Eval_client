@@ -55,6 +55,7 @@ import {
 } from "@/lib/evaluationStatus";
 import { getCachedYears } from "@/lib/referenceDataCache";
 import { cn } from "@/lib/utils";
+import { getMyEvalAsEvaluatorCount } from "@/lib/evaluatorEvalListResponse";
 import { useBranchesForEvaluation } from "@/hooks/useBranchesForEvaluation";
 import { getEmployeeBranchCodeDisplay } from "@/components/evaluation/employeeBranchLabel";
 import { isSubmissionResubmitAllowed } from "@/lib/evaluationSubmissionRecord";
@@ -105,6 +106,13 @@ const PENDING_APPROVAL_TAB_STATUSES = new Set([
   "pending_approval_2",
   "rejected",
 ]);
+
+/** Statuses that belong on Pending Approval — never plain `pending`. */
+const PENDING_APPROVAL_COUNT_STATUSES = [
+  "pending_approval_1",
+  "pending_approval_2",
+  "rejected",
+] as const;
 
 function isAllStatusFilter(value: string): boolean {
   return value === "" || value === "0";
@@ -176,6 +184,117 @@ function getEvaluatorRecordsPaginator(response: unknown): {
 
 function getEvaluatorRecordsTotal(response: unknown): number {
   return getEvaluatorRecordsPaginator(response)?.total ?? 0;
+}
+
+async function sumTotalsByStatuses(
+  fetchForStatus: (status: string) => Promise<unknown>,
+  statuses: readonly string[]
+): Promise<number> {
+  const responses = await Promise.all(
+    statuses.map((status) => fetchForStatus(status))
+  );
+  return responses.reduce<number>(
+    (sum, response) => sum + getEvaluatorRecordsTotal(response),
+    0
+  );
+}
+
+/**
+ * Tab badge counts from GET `/getPendingApprovalEvaluations`.
+ * Pending Approval badge → `pending_approvals.total`
+ * All Records badge → `myEval_as_Evaluator_count` (all-records-only; never approval-tab rows)
+ */
+async function fetchTabCountsFromPendingApprovalApi(
+  searchValue: string,
+  quarter: string,
+  yearNum: number
+): Promise<{ approvals: number; all: number | null } | null> {
+  try {
+    const response = await apiService.getPendingApprovalEvaluations(
+      searchValue,
+      1,
+      1,
+      "",
+      quarter,
+      yearNum
+    );
+
+    const approvals = getEvaluatorRecordsTotal(response);
+    const apiAllCount = getMyEvalAsEvaluatorCount(response);
+
+    // If backend still mirrors the pending total into myEval_as_Evaluator_count,
+    // treat it as missing so we can derive All Records from getEvalAuthEvaluator.
+    const all =
+      apiAllCount !== null && apiAllCount !== approvals ? apiAllCount : null;
+
+    return { approvals, all };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Pending Approval badge fallback when the dedicated endpoint is unavailable.
+ */
+async function fetchPendingApprovalTabTotal(
+  searchValue: string,
+  quarter: string,
+  yearNum: number
+): Promise<number> {
+  return sumTotalsByStatuses(
+    (status) =>
+      apiService.getEvalAuthEvaluator(
+        searchValue,
+        1,
+        1,
+        status,
+        quarter,
+        yearNum
+      ),
+    PENDING_APPROVAL_COUNT_STATUSES
+  );
+}
+
+/**
+ * All Records badge: evaluator evaluations excluding approval-tab statuses.
+ * Plain `pending` stays here (not on Pending Approval).
+ */
+async function fetchAllRecordsTabTotal(
+  searchValue: string,
+  quarter: string,
+  yearNum: number,
+  knownGrandTotal?: number
+): Promise<{ all: number; grandTotal: number }> {
+  let grandTotal = knownGrandTotal;
+  if (grandTotal === undefined) {
+    const allRes = await apiService.getEvalAuthEvaluator(
+      searchValue,
+      1,
+      1,
+      "",
+      quarter,
+      yearNum
+    );
+    grandTotal = getEvaluatorRecordsTotal(allRes);
+  }
+
+  const approvalStatusesOnEvaluatorApi = await sumTotalsByStatuses(
+    (status) =>
+      apiService.getEvalAuthEvaluator(
+        searchValue,
+        1,
+        1,
+        status,
+        quarter,
+        yearNum
+      ),
+    PENDING_APPROVAL_COUNT_STATUSES
+  );
+
+  return {
+    grandTotal,
+    all: Math.max(0, grandTotal - approvalStatusesOnEvaluatorApi),
+  };
 }
 
 function getGrandTotalCacheKey(
@@ -410,8 +529,23 @@ export default function OverviewTab() {
           return 0;
         }
 
-        const nextEvaluations = paginator.data;
-        const nextOverviewTotal = paginator.total;
+        const nextEvaluations = isApprovalsTab
+          ? paginator.data.filter((review) =>
+              isStatusOnPendingApprovalTab(review.status)
+            )
+          : paginator.data.filter((review) =>
+              isStatusOnAllRecordsTab(review.status)
+            );
+        // Keep page totals aligned with the tab: drop cross-tab statuses the API
+        // may still include (e.g. plain `pending` on approvals, or approval rows on all).
+        const removedCrossTabRows = Math.max(
+          0,
+          paginator.data.length - nextEvaluations.length
+        );
+        const nextOverviewTotal = Math.max(
+          0,
+          paginator.total - removedCrossTabRows
+        );
         const nextTotalPages = paginator.lastPage;
         const nextPerPage = paginator.perPage || itemsPerPage;
 
@@ -428,10 +562,24 @@ export default function OverviewTab() {
         });
 
         if (!isApprovalsTab && isAllStatusFilter(status)) {
+          const countKey = JSON.stringify({
+            searchValue,
+            quarter,
+            year: yearNum,
+          });
           grandTotalCacheRef.current.set(
             getGrandTotalCacheKey(searchValue, quarter, year),
             nextOverviewTotal
           );
+          // Keep All Records badge aligned with the filtered All Records list total.
+          setTabRecordCounts((prev) => {
+            const next = { ...prev, all: nextOverviewTotal };
+            tabCountsCacheRef.current.set(countKey, {
+              approvals: prev.approvals,
+              all: nextOverviewTotal,
+            });
+            return next;
+          });
         }
 
         if (isApprovalsTab && isAllStatusFilter(status)) {
@@ -440,29 +588,14 @@ export default function OverviewTab() {
             quarter,
             year: yearNum,
           });
-          tabCountsCacheRef.current.set(countKey, {
-            approvals: nextOverviewTotal,
-            all:
-              tabCountsCacheRef.current.get(countKey)?.all ??
-              Math.max(
-                0,
-                (grandTotalCacheRef.current.get(
-                  getGrandTotalCacheKey(searchValue, quarter, year)
-                ) ?? 0) - nextOverviewTotal
-              ),
+          setTabRecordCounts((prev) => {
+            const next = { ...prev, approvals: nextOverviewTotal };
+            tabCountsCacheRef.current.set(countKey, {
+              approvals: nextOverviewTotal,
+              all: prev.all,
+            });
+            return next;
           });
-          setTabRecordCounts((prev) => ({
-            approvals: nextOverviewTotal,
-            all:
-              prev.all > 0
-                ? prev.all
-                : Math.max(
-                    0,
-                    (grandTotalCacheRef.current.get(
-                      getGrandTotalCacheKey(searchValue, quarter, year)
-                    ) ?? 0) - nextOverviewTotal
-                  ),
-          }));
         }
 
         return nextOverviewTotal;
@@ -492,7 +625,7 @@ export default function OverviewTab() {
       searchValue: string,
       quarter: string,
       year: string,
-      options?: { force?: boolean; grandTotal?: number }
+      options?: { force?: boolean; allRecordsTotal?: number }
     ) => {
       const yearNum = Number(year) || 0;
       const cacheKey = JSON.stringify({
@@ -500,10 +633,6 @@ export default function OverviewTab() {
         quarter,
         year: yearNum,
       });
-      const grandTotalKey = getGrandTotalCacheKey(searchValue, quarter, year);
-      const knownGrandTotal =
-        options?.grandTotal ??
-        grandTotalCacheRef.current.get(grandTotalKey);
 
       if (!options?.force) {
         const cached = tabCountsCacheRef.current.get(cacheKey);
@@ -523,116 +652,44 @@ export default function OverviewTab() {
 
       const requestPromise = (async () => {
         try {
-          let grandTotal = knownGrandTotal;
-          let approvalsCount = 0;
+          const pendingApiCounts = await fetchTabCountsFromPendingApprovalApi(
+            searchValue,
+            quarter,
+            yearNum
+          );
 
-          if (grandTotal === undefined) {
-            let pendingRes: unknown;
-            try {
-              pendingRes = await apiService.getPendingApprovalEvaluations(
-                searchValue,
-                1,
-                1,
-                "",
-                quarter,
-                yearNum
-              );
-            } catch {
-              const [a1, a2, rejected] = await Promise.all([
-                apiService.getEvalAuthEvaluator(
-                  searchValue,
-                  1,
-                  1,
-                  "pending_approval_1",
-                  quarter,
-                  yearNum
-                ),
-                apiService.getEvalAuthEvaluator(
-                  searchValue,
-                  1,
-                  1,
-                  "pending_approval_2",
-                  quarter,
-                  yearNum
-                ),
-                apiService.getEvalAuthEvaluator(
-                  searchValue,
-                  1,
-                  1,
-                  "rejected",
-                  quarter,
-                  yearNum
-                ),
-              ]);
-              pendingRes = {
-                myEval_as_Evaluator: {
-                  total:
-                    getEvaluatorRecordsTotal(a1) +
-                    getEvaluatorRecordsTotal(a2) +
-                    getEvaluatorRecordsTotal(rejected),
-                },
-              };
-            }
-
-            const allRes = await apiService.getEvalAuthEvaluator(
+          let approvalsCount = pendingApiCounts?.approvals;
+          if (approvalsCount === undefined) {
+            approvalsCount = await fetchPendingApprovalTabTotal(
               searchValue,
-              1,
-              1,
-              "",
               quarter,
               yearNum
             );
-            approvalsCount = getEvaluatorRecordsTotal(pendingRes);
-            grandTotal = getEvaluatorRecordsTotal(allRes);
-            grandTotalCacheRef.current.set(grandTotalKey, grandTotal);
-          } else {
-            try {
-              const pendingRes = await apiService.getPendingApprovalEvaluations(
-                searchValue,
-                1,
-                1,
-                "",
-                quarter,
-                yearNum
-              );
-              approvalsCount = getEvaluatorRecordsTotal(pendingRes);
-            } catch {
-              const [a1, a2, rejected] = await Promise.all([
-                apiService.getEvalAuthEvaluator(
-                  searchValue,
-                  1,
-                  1,
-                  "pending_approval_1",
-                  quarter,
-                  yearNum
-                ),
-                apiService.getEvalAuthEvaluator(
-                  searchValue,
-                  1,
-                  1,
-                  "pending_approval_2",
-                  quarter,
-                  yearNum
-                ),
-                apiService.getEvalAuthEvaluator(
-                  searchValue,
-                  1,
-                  1,
-                  "rejected",
-                  quarter,
-                  yearNum
-                ),
-              ]);
-              approvalsCount =
-                getEvaluatorRecordsTotal(a1) +
-                getEvaluatorRecordsTotal(a2) +
-                getEvaluatorRecordsTotal(rejected);
-            }
+          }
+
+          // All Records badge priority:
+          // 1) filtered All Records list total (matches the table)
+          // 2) myEval_as_Evaluator_count when it is not just a copy of pending total
+          // 3) derive from getEvalAuthEvaluator minus approval statuses
+          let allCount =
+            options?.allRecordsTotal ?? pendingApiCounts?.all ?? null;
+
+          if (allCount === null) {
+            const allRecords = await fetchAllRecordsTabTotal(
+              searchValue,
+              quarter,
+              yearNum
+            );
+            allCount = allRecords.all;
+            grandTotalCacheRef.current.set(
+              getGrandTotalCacheKey(searchValue, quarter, year),
+              allRecords.grandTotal
+            );
           }
 
           const nextCounts = {
-            approvals: approvalsCount,
-            all: Math.max(0, grandTotal - approvalsCount),
+            approvals: approvalsCount ?? 0,
+            all: allCount ?? 0,
           };
 
           tabCountsCacheRef.current.set(cacheKey, nextCounts);
@@ -733,22 +790,18 @@ export default function OverviewTab() {
         if (shouldRefreshTabCounts) {
           prevTabCountFilterKeyRef.current = tabCountFilterKey;
 
-          const grandTotal = isAllStatusFilter(debouncedStatusFilter)
-            ? loadedTotal
-            : grandTotalCacheRef.current.get(
-                getGrandTotalCacheKey(
-                  debouncedSearchTerm,
-                  debouncedQuarterFilter,
-                  debouncedYearFilter
-                )
-              );
+          const allRecordsTotal =
+            activeRecordsTab === "all" &&
+            isAllStatusFilter(debouncedStatusFilter)
+              ? loadedTotal
+              : undefined;
 
           const scheduleTabCounts = () => {
             void loadTabRecordCounts(
               debouncedSearchTerm,
               debouncedQuarterFilter,
               debouncedYearFilter,
-              { grandTotal }
+              { allRecordsTotal }
             );
           };
 
@@ -811,15 +864,17 @@ export default function OverviewTab() {
         debouncedYearFilter,
       });
 
-      const grandTotal = isAllStatusFilter(debouncedStatusFilter)
-        ? loadedTotal
-        : undefined;
+      const allRecordsTotal =
+        activeRecordsTab === "all" &&
+        isAllStatusFilter(debouncedStatusFilter)
+          ? loadedTotal
+          : undefined;
 
       await loadTabRecordCounts(
         debouncedSearchTerm,
         debouncedQuarterFilter,
         debouncedYearFilter,
-        { force: true, grandTotal }
+        { force: true, allRecordsTotal }
       );
     } catch (error) {
       console.error("Error refreshing data:", error);
