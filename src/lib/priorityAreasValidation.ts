@@ -12,17 +12,47 @@ export type PriorityAreaFieldErrors = {
   priorityArea3: boolean;
 };
 
-/** Each of the 3 priority areas must have at least PRIORITY_AREA_MIN_CHARS. */
+export type PriorityAreaValidationResult = {
+  fieldErrors: PriorityAreaFieldErrors;
+  /** True when at least one area has 20+ chars and no filled area is under 20. */
+  isValid: boolean;
+  /** True when all fields are empty (nothing to highlight per-field). */
+  showGeneralError: boolean;
+};
+
+function getTrimmedLength(value?: string | null): number {
+  return (value || "").trim().length;
+}
+
+function fieldHasInput(value?: string | null): boolean {
+  return getTrimmedLength(value) > 0;
+}
+
+function isTooShort(value?: string | null): boolean {
+  return fieldHasInput(value) && getTrimmedLength(value) < PRIORITY_AREA_MIN_CHARS;
+}
+
+/** At least one priority area must reach the minimum character count. */
+export function hasValidPriorityArea(data: PriorityAreaFields): boolean {
+  return (
+    getTrimmedLength(data.priorityArea1) >= PRIORITY_AREA_MIN_CHARS ||
+    getTrimmedLength(data.priorityArea2) >= PRIORITY_AREA_MIN_CHARS ||
+    getTrimmedLength(data.priorityArea3) >= PRIORITY_AREA_MIN_CHARS
+  );
+}
+
+/**
+ * Per-field errors when the user typed in that area but it is still under
+ * 20 characters. Empty fields are fine. Having one valid area does not
+ * clear errors on other short fields.
+ */
 export function getPriorityAreaFieldErrors(
   data: PriorityAreaFields
 ): PriorityAreaFieldErrors {
   return {
-    priorityArea1:
-      (data.priorityArea1 || "").trim().length < PRIORITY_AREA_MIN_CHARS,
-    priorityArea2:
-      (data.priorityArea2 || "").trim().length < PRIORITY_AREA_MIN_CHARS,
-    priorityArea3:
-      (data.priorityArea3 || "").trim().length < PRIORITY_AREA_MIN_CHARS,
+    priorityArea1: isTooShort(data.priorityArea1),
+    priorityArea2: isTooShort(data.priorityArea2),
+    priorityArea3: isTooShort(data.priorityArea3),
   };
 }
 
@@ -34,6 +64,23 @@ export function hasAnyPriorityAreaError(
   );
 }
 
-export const PRIORITY_AREAS_VALIDATION_MESSAGE = `Please enter at least ${PRIORITY_AREA_MIN_CHARS} characters in each of the 3 priority areas.`;
+export function getPriorityAreaValidationResult(
+  data: PriorityAreaFields
+): PriorityAreaValidationResult {
+  const fieldErrors = getPriorityAreaFieldErrors(data);
+  const hasShortFields = hasAnyPriorityAreaError(fieldErrors);
+  const hasOneValid = hasValidPriorityArea(data);
+  const isValid = hasOneValid && !hasShortFields;
 
-export const PRIORITY_AREA_INPUT_PLACEHOLDER = `Enter priority area (min. ${PRIORITY_AREA_MIN_CHARS} characters)`;
+  return {
+    fieldErrors,
+    isValid,
+    showGeneralError: !hasOneValid && !hasShortFields,
+  };
+}
+
+export const PRIORITY_AREAS_VALIDATION_MESSAGE = `Please enter at least ${PRIORITY_AREA_MIN_CHARS} characters in at least one priority area. Any filled area must also have at least ${PRIORITY_AREA_MIN_CHARS} characters.`;
+
+export const PRIORITY_AREA_FIELD_ERROR_MESSAGE = `Enter at least ${PRIORITY_AREA_MIN_CHARS} characters in this area.`;
+
+export const PRIORITY_AREA_INPUT_PLACEHOLDER = `Enter priority area (min. ${PRIORITY_AREA_MIN_CHARS} characters if filled)`;

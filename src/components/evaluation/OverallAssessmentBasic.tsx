@@ -27,8 +27,8 @@ import {
   getCurrentYear,
 } from "@/lib/quarterlyReviewUtils";
 import {
-  getPriorityAreaFieldErrors,
-  hasAnyPriorityAreaError,
+  getPriorityAreaValidationResult,
+  PRIORITY_AREA_FIELD_ERROR_MESSAGE,
   PRIORITY_AREA_INPUT_PLACEHOLDER,
   PRIORITY_AREAS_VALIDATION_MESSAGE,
 } from "@/lib/priorityAreasValidation";
@@ -97,6 +97,7 @@ export default function OverallAssessmentBasic({
   // Submission state management
   const [submissionError, setSubmissionError] = useState("");
   const [validationErrors, setValidationErrors] = useState({
+    priorityAreas: false,
     priorityArea1: false,
     priorityArea2: false,
     priorityArea3: false,
@@ -139,16 +140,20 @@ export default function OverallAssessmentBasic({
     // Clear any previous errors
     setSubmissionError("");
     setValidationErrors({
+      priorityAreas: false,
       priorityArea1: false,
       priorityArea2: false,
       priorityArea3: false,
       remarks: false,
     });
 
-    // Validate Priority Areas for Improvement: each field needs minimum characters
-    const priorityAreaErrors = getPriorityAreaFieldErrors(data);
-    if (hasAnyPriorityAreaError(priorityAreaErrors)) {
-      setValidationErrors((prev) => ({ ...prev, ...priorityAreaErrors }));
+    const priorityValidation = getPriorityAreaValidationResult(data);
+    if (!priorityValidation.isValid) {
+      setValidationErrors((prev) => ({
+        ...prev,
+        ...priorityValidation.fieldErrors,
+        priorityAreas: priorityValidation.showGeneralError,
+      }));
       error(PRIORITY_AREAS_VALIDATION_MESSAGE);
       setShowLoadingDialog(false);
       setIsSubmittingEvaluation(false);
@@ -832,14 +837,18 @@ export default function OverallAssessmentBasic({
                   >
                     Others:
                   </label>
-                  <input
-                    type="text"
-                    value={data.reviewTypeOthersCustom || ""}
-                    className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded bg-gray-50"
-                    placeholder="Enter custom review type"
-                    disabled
-                    readOnly
-                  />
+                  {data.reviewTypeOthersCustom !== "" &&
+                    data.reviewTypeOthersCustom !== null &&
+                    data.reviewTypeOthersCustom.trim() !== "" && (
+                      <input
+                        type="text"
+                        value={data.reviewTypeOthersCustom || ""}
+                        className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded bg-gray-50"
+                        placeholder="Enter custom review type"
+                        disabled
+                        readOnly
+                      />
+                    )}
                 </div>
               </div>
             </div>
@@ -2887,7 +2896,8 @@ export default function OverallAssessmentBasic({
             performance and align with branch or company goals. Keep the
             feedback clear, helpful, and easy to act on.
           </p>
-          {(validationErrors.priorityArea1 ||
+          {(validationErrors.priorityAreas ||
+            validationErrors.priorityArea1 ||
             validationErrors.priorityArea2 ||
             validationErrors.priorityArea3) && (
             <p className="text-sm text-red-600 mb-3">
@@ -2905,6 +2915,7 @@ export default function OverallAssessmentBasic({
                 onChange={(e) => {
                   setValidationErrors((prev) => ({
                     ...prev,
+                    priorityAreas: false,
                     priorityArea1: false,
                   }));
                   updateDataAction({ priorityArea1: e.target.value });
@@ -2914,7 +2925,7 @@ export default function OverallAssessmentBasic({
               />
               {validationErrors.priorityArea1 && (
                 <p className="mt-1 text-xs text-red-600">
-                  Enter at least 20 characters.
+                  {PRIORITY_AREA_FIELD_ERROR_MESSAGE}
                 </p>
               )}
             </div>
@@ -2928,6 +2939,7 @@ export default function OverallAssessmentBasic({
                 onChange={(e) => {
                   setValidationErrors((prev) => ({
                     ...prev,
+                    priorityAreas: false,
                     priorityArea2: false,
                   }));
                   updateDataAction({ priorityArea2: e.target.value });
@@ -2937,7 +2949,7 @@ export default function OverallAssessmentBasic({
               />
               {validationErrors.priorityArea2 && (
                 <p className="mt-1 text-xs text-red-600">
-                  Enter at least 20 characters.
+                  {PRIORITY_AREA_FIELD_ERROR_MESSAGE}
                 </p>
               )}
             </div>
@@ -2951,6 +2963,7 @@ export default function OverallAssessmentBasic({
                 onChange={(e) => {
                   setValidationErrors((prev) => ({
                     ...prev,
+                    priorityAreas: false,
                     priorityArea3: false,
                   }));
                   updateDataAction({ priorityArea3: e.target.value });
@@ -2960,7 +2973,7 @@ export default function OverallAssessmentBasic({
               />
               {validationErrors.priorityArea3 && (
                 <p className="mt-1 text-xs text-red-600">
-                  Enter at least 20 characters.
+                  {PRIORITY_AREA_FIELD_ERROR_MESSAGE}
                 </p>
               )}
             </div>
