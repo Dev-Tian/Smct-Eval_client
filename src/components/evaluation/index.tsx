@@ -5,12 +5,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -20,15 +14,7 @@ import {
 import { AlertTriangle } from "lucide-react";
 import WelcomeStep from "./WelcomeStep";
 import { EvaluationPayload, EvaluationStepConfig } from "./types";
-import { storeEvaluationResult } from "@/lib/evaluationStorage";
-import {
-  createSubmission,
-  postBranchBasic,
-  postBranchRankNFile,
-  postHoBasic,
-  postHoRankNFile,
-} from "@/lib/evaluationCreateApi";
-import { createEvaluationNotification } from "@/lib/notificationUtils";
+import { apiService } from "@/lib/apiService";
 import { User, useAuth } from "../../contexts/UserContext";
 import { branchEvaluationSteps, branchRankNfileSteps } from "./configs";
 import { isEmployeeHeadOffice } from "./employeeBranchLabel";
@@ -41,6 +27,9 @@ import { submitEvaluationForm } from "@/lib/evaluationEditSubmit";
 import { isEditSession } from "@/lib/evaluationEditTypes";
 import { toastMessages } from "@/lib/toastMessages";
 import { getEvaluationApiErrorMessage } from "@/components/evaluation/evaluationRecordsShared";
+import EvaluationStepNavigation from "./EvaluationStepNavigation";
+import { useEvaluationDraftOnNext } from "@/hooks/useEvaluationDraftOnNext";
+import { buildEvaluationSavePayload } from "@/lib/evaluationDraftSave";
 
 // Default steps use branch evaluation configuration
 const defaultSteps: EvaluationStepConfig[] = branchEvaluationSteps;
@@ -804,11 +793,24 @@ export default function EvaluationForm({
   };
 
   const nextStep = () => {
-    // Move to next step in filtered steps array
-    if (currentStep < filteredSteps.length) {
-      setCurrentStep(currentStep + 1);
-    }
+    setCurrentStep((step) =>
+      step < filteredSteps.length ? step + 1 : step
+    );
   };
+
+  const { saveAndNext, isSavingDraft } = useEvaluationDraftOnNext({
+    employeeId: employee?.id,
+    form,
+    draftType: isHO
+      ? evaluationType === "basic"
+        ? "basic"
+        : "rankNfile"
+      : evaluationType === "rankNfile"
+        ? "branchRankNfile"
+        : "branchBasic",
+    editSession,
+    onAdvance: nextStep,
+  });
 
   const prevStep = () => {
     // Move to previous step
@@ -851,19 +853,21 @@ export default function EvaluationForm({
       // posting those payloads to branch endpoints caused backend validation errors
       // (e.g. customerServiceExplanation1–5, qualityOfWorkComments5 required).
 
-      await submitEvaluationForm(editSession, form, async () => {
+      const payload = buildEvaluationSavePayload(form);
+
+      await submitEvaluationForm(editSession, payload, async () => {
         if (isHO) {
           if (evaluationType === "rankNfile") {
-            await postHoRankNFile(empID, form);
+            await apiService.postHoRankNFile(empID, payload);
           } else if (evaluationType === "basic") {
-            await postHoBasic(empID, form);
+            await apiService.postHoBasic(empID, payload);
           } else {
-            await createSubmission(empID, form);
+            await apiService.createSubmission(empID, payload);
           }
         } else if (evaluationType === "rankNfile") {
-          await postBranchRankNFile(empID, form);
+          await apiService.postBranchRankNFile(empID, payload);
         } else {
-          await postBranchBasic(empID, form);
+          await apiService.postBranchBasic(empID, payload);
         }
       });
 
@@ -919,7 +923,7 @@ export default function EvaluationForm({
         @keyframes successBounce {
           0% {
             transform: scale(0.9);
-            opacity: 0;
+            opacity: 0; 
           }
           50% {
             transform: scale(1.05);
@@ -1002,7 +1006,7 @@ export default function EvaluationForm({
                             {index === filteredSteps.length - 1 ? "End" : step.id}
                           </div>
 
-                          {/* Connecting Line */}
+                          {/* Connecting Line */} 
                           {index < filteredSteps.length - 1 && (
                             <div className="w-16 h-1 mx-2 relative">
                               <div className="absolute inset-0 bg-gray-200 rounded-full"></div>
@@ -1108,71 +1112,16 @@ export default function EvaluationForm({
               </Card>
             )}
 
-            {/* Navigation Buttons - Only show for steps before Overall Assessment */}
             {currentStep > 0 && !isOverallAssessmentStep && (
-              <div className="flex justify-between mt-6">
-                <div className="flex gap-3">
-                  <Button
-                    variant="outline"
-                    onClick={prevStep}
-                    disabled={currentStep === 1}
-                    className="px-6 cursor-pointer bg-blue-500 text-white hover:scale-110 transition-transform duration-200 hover:bg-blue-500 hover:text-white"
-                  >
-                    Previous
-                  </Button>
-
-                  <Button
-                    variant="outline"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setShowCancelDialog(true);
-                    }}
-                    className="px-6 text-red-600 bg-red-500 text-white border-red-300 hover:bg-red-500 hover:text-white cursor-pointer hover:scale-110 transition-transform duration-200"
-                  >
-                    Cancel Evaluation
-                  </Button>
-                </div>
-
-                <div className="flex flex-col gap-2">
-                  <TooltipProvider>
-                    {currentStep >= 1 &&
-                    !isOverallAssessmentStep &&
-                    !isCurrentStepComplete() ? (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            onClick={(e) => {
-                              e.preventDefault();
-                              // Button is disabled, do nothing
-                            }}
-                            className="px-6 opacity-50 cursor-not-allowed"
-                          >
-                            Next
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>{getValidationMessage()}</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    ) : (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            onClick={nextStep}
-                            className="px-6 bg-blue-500 text-white hover:bg-green-600 hover:text-white cursor-pointer hover:scale-110 transition-transform duration-200"
-                          >
-                            Next
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Proceed to the next step</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    )}
-                  </TooltipProvider>
-                </div>
-              </div>
+              <EvaluationStepNavigation
+                currentStep={currentStep}
+                canProceed={Boolean(isCurrentStepComplete())}
+                validationMessage={getValidationMessage()}
+                isSaving={isSavingDraft}
+                onPrevious={prevStep}
+                onCancel={() => setShowCancelDialog(true)}
+                onNext={saveAndNext}
+              />
             )}
           </div>
         </div>
