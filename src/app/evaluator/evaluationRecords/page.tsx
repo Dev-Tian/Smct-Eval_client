@@ -56,8 +56,6 @@ import {
 import { getCachedYears } from "@/lib/referenceDataCache";
 import { cn } from "@/lib/utils";
 import { getMyEvalAsEvaluatorCount } from "@/lib/evaluatorEvalListResponse";
-import { useBranchesForEvaluation } from "@/hooks/useBranchesForEvaluation";
-import { getEmployeeBranchCodeDisplay } from "@/components/evaluation/employeeBranchLabel";
 import { isSubmissionResubmitAllowed } from "@/lib/evaluationSubmissionRecord";
 import {
   type EvaluationRecordReview,
@@ -91,7 +89,9 @@ import {
   ratingPillClass,
 } from "@/components/evaluation/evaluationRecordsShared";
 
-type Review = EvaluationRecordReview;
+type Review = EvaluationRecordReview & {
+  employee_branch_code?: string | null;
+};
 
 const EVALUATION_RECORDS_TABS = [
   { id: "all", label: "All Records" },
@@ -153,6 +153,52 @@ function matchesDisplayedEvaluation(
     : isStatusOnAllRecordsTab(status);
 }
 
+function asBranchCodeText(value: unknown): string {
+  if (value == null) return "";
+  if (typeof value === "string" || typeof value === "number") {
+    const text = String(value).trim();
+    if (!text || text.toLowerCase() === "null" || text.toLowerCase() === "undefined") {
+      return "";
+    }
+    return text;
+  }
+  return "";
+}
+
+function branchCodeFromObject(value: unknown): string {
+  if (!value || typeof value !== "object") return asBranchCodeText(value);
+  const record = value as Record<string, unknown>;
+  return (
+    asBranchCodeText(record.employee_branch_code) ||
+    asBranchCodeText(record.employeeBranchCode) ||
+    asBranchCodeText(record.branch_code) ||
+    asBranchCodeText(record.branchCode) ||
+    asBranchCodeText(record.code)
+  );
+}
+
+/** Same branch value the admin table reads from each evaluation row. */
+function withEmployeeBranchCode(row: Review): Review {
+  const record = row as Review & Record<string, unknown>;
+  const employee = (record.employee ?? {}) as Record<string, unknown>;
+  const branches = Array.isArray(employee.branches)
+    ? employee.branches[0]
+    : employee.branches;
+
+  const code =
+    asBranchCodeText(record.employee_branch_code) ||
+    asBranchCodeText(record.employeeBranchCode) ||
+    asBranchCodeText(employee.employee_branch_code) ||
+    asBranchCodeText(employee.employeeBranchCode) ||
+    branchCodeFromObject(employee.branch) ||
+    branchCodeFromObject(branches);
+
+  return {
+    ...row,
+    employee_branch_code: code || null,
+  };
+}
+
 function getEvaluatorRecordsPaginator(response: unknown): {
   data: Review[];
   total: number;
@@ -169,7 +215,9 @@ function getEvaluatorRecordsPaginator(response: unknown): {
 
   if (!paginator || typeof paginator !== "object") return null;
 
-  const data = Array.isArray(paginator.data) ? (paginator.data as Review[]) : [];
+  const data = Array.isArray(paginator.data)
+    ? (paginator.data as Review[]).map(withEmployeeBranchCode)
+    : [];
   const total = Number(paginator.total);
   const lastPage = Number(paginator.last_page);
   const perPage = Number(paginator.per_page);
@@ -321,8 +369,6 @@ const REJECT_DRAFT_NOTE_MAX_LENGTH = 20;
 export default function OverviewTab() {
   const { user } = useAuth();
   const isMobileViewport = useMobileViewport();
-  const { branchOptions, isLoading: branchListLoading } =
-    useBranchesForEvaluation();
 
   const [evaluations, setEvaluations] = useState<Review[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -398,9 +444,12 @@ export default function OverviewTab() {
       );
     }
 
-    return EVALUATION_STATUS_FILTER_OPTIONS.filter((option) =>
-      isStatusOnAllRecordsTab(option.value)
-    );
+    return [
+      { value: "draft", label: "Draft" },
+      ...EVALUATION_STATUS_FILTER_OPTIONS.filter((option) =>
+        isStatusOnAllRecordsTab(option.value)
+      ),
+    ];
   }, [activeRecordsTab]);
 
   const displayedEvaluations = useMemo(
@@ -1596,11 +1645,7 @@ export default function OverviewTab() {
                           </TableCell>
                           <TableCell className="hidden text-gray-600 md:table-cell">
                             <span className="block max-w-[5rem] truncate sm:max-w-none">
-                              {getEmployeeBranchCodeDisplay(
-                                review.employee,
-                                branchOptions,
-                                branchListLoading
-                              )}
+                              {review.employee_branch_code}
                             </span>
                           </TableCell>
                           <TableCell>
