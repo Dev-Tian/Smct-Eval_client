@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { usePathname } from "next/navigation";
 import {
   Card,
   CardContent,
@@ -188,6 +189,9 @@ function typeFilterLabel(filter: ActivityLogTypeFilter): string {
 }
 
 export default function AdminActivityLogsPage() {
+  const pathname = usePathname();
+  const roleBadge = pathname?.includes("/hr-dashboard") ? "HR" : "Admin";
+
   const [rows, setRows] = useState<ActivityLogRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -320,7 +324,7 @@ export default function AdminActivityLogsPage() {
                   variant="secondary"
                   className="border-white/20 bg-white/15 py-0 text-[0.6rem] font-medium leading-tight text-white backdrop-blur-sm hover:bg-white/20 sm:text-[0.65rem]"
                 >
-                  Admin
+                  {roleBadge}
                 </Badge>
               </div>
               <CardDescription className="max-w-xl text-xs leading-snug text-blue-50/95 sm:text-sm">

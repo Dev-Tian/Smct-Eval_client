@@ -526,6 +526,7 @@ export default function DashboardShell(props: DashboardShellProps) {
           "subordinates",
           "positions",
           "violation-summary",
+          "activity-logs",
         ].includes(activeItemId) &&
         !isManagementOpen
       ) {
@@ -1191,6 +1192,7 @@ export default function DashboardShell(props: DashboardShellProps) {
                               "positions",
                               "area-managers",
                               "violation-summary",
+                              "activity-logs",
                             ].includes(id)
                         )
                     : isEmployeeDashboard
@@ -1208,7 +1210,7 @@ export default function DashboardShell(props: DashboardShellProps) {
 
                   // Define collapsible groups
                   // For HR dashboard, management includes departments, branches, positions,
-                  // branch-heads, area-managers, subordinates, violation-summary.
+                  // branch-heads, area-managers, subordinates, violation-summary, activity-logs.
                   // For admin dashboard, management includes subordinates, org structure,
                   // violation summary, and activity logs (no separate Leadership section).
                   const managementItems = isHRDashboard
@@ -1220,6 +1222,7 @@ export default function DashboardShell(props: DashboardShellProps) {
                         "positions",
                         "area-managers",
                         "violation-summary",
+                        "activity-logs",
                       ]
                     : [
                         "subordinates",
