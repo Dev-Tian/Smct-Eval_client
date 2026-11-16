@@ -33,6 +33,8 @@ import { submitEvaluationForm } from "@/lib/evaluationEditSubmit";
 import { isEditSession } from "@/lib/evaluationEditTypes";
 import EvaluationStepNavigation from "./EvaluationStepNavigation";
 import EvaluationCancelDraftDialog from "./EvaluationCancelDraftDialog";
+import EvaluationFormCloseButton from "./EvaluationFormCloseButton";
+import EvaluationCloseConfirmDialog from "./EvaluationCloseConfirmDialog";
 import { useEvaluationDraftOnNext } from "@/hooks/useEvaluationDraftOnNext";
 import { buildEvaluationSavePayload } from "@/lib/evaluationDraftSave";
 
@@ -418,6 +420,7 @@ export default function BranchRankNfileEvaluationForm({
 
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const startEvaluation = () => {
@@ -430,7 +433,13 @@ export default function BranchRankNfileEvaluationForm({
     );
   };
 
-  const { saveAndNext, saveDraft, isSavingDraft } = useEvaluationDraftOnNext({
+  const {
+    saveAndNext,
+    saveDraft,
+    discardDraftAndLeave,
+    isSavingDraft,
+    isDiscardingDraft,
+  } = useEvaluationDraftOnNext({
     employeeId: employee?.id,
     form,
     draftType: "branchRankNfile",
@@ -536,9 +545,20 @@ export default function BranchRankNfileEvaluationForm({
 
   return (
     <>
-      <div className="max-h-[95vh] bg-gradient-to-br from-blue-50 to-indigo-100 p-6 overflow-y-auto">
-        <div className="w-full mx-auto px-4">
-          <div className="max-w-7xl mx-auto">
+      <div className="relative max-h-[95vh] bg-gradient-to-br from-blue-50 to-indigo-100">
+        {currentStep === 1 ? (
+          <div className="pointer-events-none absolute right-5 top-5 z-30">
+            <div className="pointer-events-auto">
+              <EvaluationFormCloseButton
+                disabled={isSavingDraft || isDiscardingDraft}
+                onClick={() => setShowCloseConfirm(true)}
+              />
+            </div>
+          </div>
+        ) : null}
+        <div className="max-h-[95vh] overflow-y-auto p-6">
+        <div className="mx-auto w-full px-4">
+          <div className="mx-auto max-w-7xl">
             {/* Step Numbers Indicator */}
             {currentStep > 0 && (
               <div className="mb-6 flex items-center justify-center gap-2 flex-wrap">
@@ -661,7 +681,19 @@ export default function BranchRankNfileEvaluationForm({
             )}
           </div>
         </div>
+        </div>
       </div>
+
+      <EvaluationCloseConfirmDialog
+        open={showCloseConfirm}
+        isDiscarding={isDiscardingDraft}
+        onOpenChangeAction={setShowCloseConfirm}
+        onConfirmAction={async () => {
+          await discardDraftAndLeave();
+          setShowCloseConfirm(false);
+          handleCancel();
+        }}
+      />
 
       <EvaluationCancelDraftDialog
         open={showCancelDialog}
